@@ -1,0 +1,35 @@
+[project]
+name = "pypad"  
+version = "0.0.0" 
+description = "Python Notepad" 
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+keywords = ["development"] 
+authors = [
+  {name = "Idan Pazi", email = "idan.kp@gmail.com" } 
+]
+classifiers = [  
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+dependencies = [ 
+  "watchdog",
+  "ipython",
+]
+
+[project.urls]  
+"Homepage" = "https://github.com/idanpa/pypad"
+"Bug Reports" = "https://github.com/idanpa/pypad/issues"
+"Source" = "https://github.com/idanpa/pypad"
+
+[project.scripts]  
+pypad = "pypad.__main__:main"
+
+[tool.setuptools]
+packages = ["pypad"]
+
+[build-system]
+requires = ["setuptools>=43.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
