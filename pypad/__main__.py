@@ -3,6 +3,7 @@ import sys
 import time
 import builtins
 import argparse
+import logging
 import IPython
 from traitlets.config.loader import Config
 from watchdog.events import PatternMatchingEventHandler
@@ -43,7 +44,7 @@ class NotepadFileHandler(PatternMatchingEventHandler):
             print(repr(e))
 
     def on_modified(self, event):
-        print('modified event')
+        logging.debug(f'modified event')
         lines = self.read_file()
         lines_done = []
         # skip unchanged lines:
@@ -56,7 +57,7 @@ class NotepadFileHandler(PatternMatchingEventHandler):
             while self.ip.check_complete('\n'.join(cell))[0] == 'incomplete' and lines:
                 cell.append(lines.pop(0))
             cell[-1] = cell[-1].split(' #: ')[0]
-            print(f'exec: {cell}')
+            logging.debug('>>> '+'\n>>> '.join(cell))
             self.display_lines = []
             result = self.ip.run_cell('\n'.join(cell), store_history=False)
             res = '❌' if result.error_in_exec else result.result
@@ -76,9 +77,11 @@ class NotepadObserver(Observer):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('file', help="?")
+    parser.add_argument('file', help="python file to watch")
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+
+    logging.basicConfig(format='%(message)s', level=logging.DEBUG if args.debug else logging.INFO)
 
     file_path = os.path.abspath(args.file)
     print(f'Watching: {file_path}')
