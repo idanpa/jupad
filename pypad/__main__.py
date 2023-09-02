@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import builtins
 import argparse
 import IPython
 from traitlets.config.loader import Config
@@ -23,34 +24,48 @@ class NotepadFileHandler(PatternMatchingEventHandler):
         ipapp = IPython.terminal.ipapp.TerminalIPythonApp.instance(config=config)
         ipapp.initialize()
         self.ip = ipapp.shell
+        builtins.display = self.display
+
+    def display(self, obj):
+        lines = self.ip.display_formatter.formatters['text/plain'](obj).splitlines()
+        self.display_lines += ['#: ' + l for l in lines]
+
+    def read_file(self):
+        with open(self.file_path, 'r') as f:
+            return f.read().splitlines()
+
+    def write_file(self, lines):
+        try:
+            with open(self.file_path, 'w') as f:
+                f.writelines('\n'.join(lines) + '\n')
+            self.observer.event_queue.get(timeout=1)
+        except Exception as e:
+            print(repr(e))
 
     def on_modified(self, event):
         print('modified event')
-        with open(self.file_path, 'r') as f:
-            lines = f.read().splitlines()
+        lines = self.read_file()
         lines_done = []
-        # skip unchanged lines
-        while len(lines) and len(self.prev_lines) and lines[0] == self.prev_lines.pop(0):
+        # skip unchanged lines:
+        while lines and self.prev_lines and lines[0] == self.prev_lines.pop(0):
             lines_done.append(lines.pop(0))
-        while len(lines):
+        while lines:
             cell = [lines.pop(0)]
-            while self.ip.check_complete('\n'.join(cell))[0] == 'incomplete' and len(lines) > 0:
+            if cell[0].startswith('#: '):
+                continue
+            while self.ip.check_complete('\n'.join(cell))[0] == 'incomplete' and lines:
                 cell.append(lines.pop(0))
             cell[-1] = cell[-1].split(' #: ')[0]
             print(f'exec: {cell}')
+            self.display_lines = []
             result = self.ip.run_cell('\n'.join(cell), store_history=False)
             res = '❌' if result.error_in_exec else result.result
-            if res:
-                cell[-1] += f' #: {res}'
-                try:
-                    with open(self.file_path, 'w') as f:
-                        f.writelines('\n'.join(lines_done + cell + lines) + '\n')
-                    while(not self.observer.event_queue.empty()):
-                        self.observer.event_queue.get(timeout=1)
-                except Exception as e:
-                    print(repr(e))
+            cell[-1] += f' #: {res}' if res else ''
+            cell += self.display_lines
+            if res or self.display_lines:
+                self.write_file(lines_done + cell + lines)
             lines_done += cell
-        # todo: but what if last write failed?
+        self.write_file(lines_done)
         self.prev_lines = lines_done
 
 class NotepadObserver(Observer):
@@ -67,7 +82,6 @@ def main():
 
     file_path = os.path.abspath(args.file)
     print(f'Watching: {file_path}')
-
     observer = NotepadObserver(file_path)
     observer.start()
     try:
