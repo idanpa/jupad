@@ -60,10 +60,13 @@ class NotepadFileHandler(PatternMatchingEventHandler):
             logging.debug('>>> '+'\n>>> '.join(cell))
             self.display_lines = []
             result = self.ip.run_cell('\n'.join(cell), store_history=False)
-            res = '❌' if result.error_in_exec else result.result
-            cell[-1] += f' #: {res}' if res else ''
+            if result.error_in_exec:
+                result.result = '❌'
+            elif result.result is not None:
+                res = str(result.result).replace('\n',' ')
+                cell[-1] += f' #: {res}'
             cell += self.display_lines
-            if res or self.display_lines:
+            if result.result is not None or self.display_lines:
                 self.write_file(lines_done + cell + lines)
             lines_done += cell
         self.write_file(lines_done)
