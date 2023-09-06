@@ -10,10 +10,11 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
 class NotepadFileHandler(PatternMatchingEventHandler):
-    def __init__(self, observer, file_path):
+    def __init__(self, observer, file_path, debug=False):
         super().__init__(patterns=[file_path])
         self.observer = observer
         self.file_path = file_path
+        self.debug = debug
         self.prev_lines = []
 
         sys.argv = [sys.argv[0]]
@@ -21,7 +22,9 @@ class NotepadFileHandler(PatternMatchingEventHandler):
         config.TerminalInteractiveShell.simple_prompt = True
         config.TerminalInteractiveShell.term_title = False
         config.TerminalInteractiveShell.xmode = 'Minimal'
+        config.PlainTextFormatter.max_width = 120
         config.HistoryAccessor.enabled = False
+        config.InteractiveShell.cache_size = 0
         ipapp = IPython.terminal.ipapp.TerminalIPythonApp.instance(config=config)
         ipapp.initialize()
         self.ip = ipapp.shell
@@ -29,7 +32,10 @@ class NotepadFileHandler(PatternMatchingEventHandler):
 
     def display(self, obj):
         lines = self.ip.display_formatter.formatters['text/plain'](obj).splitlines()
-        self.display_lines += ['#: ' + l for l in lines]
+        self.display_lines += ['#: ' + l.rstrip() for l in lines]
+
+    def check_incomplete(self, lines):
+        return self.ip.check_complete('\n'.join(lines))[0] == 'incomplete'
 
     def read_file(self):
         with open(self.file_path, 'r') as f:
@@ -43,39 +49,48 @@ class NotepadFileHandler(PatternMatchingEventHandler):
         except Exception as e:
             print(repr(e))
 
+    def run_cell(self, lines):
+        logging.debug('>>> ' + '\n... '.join(lines))
+        result = self.ip.run_cell('\n'.join(lines), store_history=False, silent=not self.debug)
+        if result.error_in_exec:
+            return f'❌ {type(result.error_in_exec).__name__}: {result.error_in_exec}'.replace('\n',' ')
+        if result.result is not None:
+            return str(result.result).replace('\n',' ')
+        return None
+
     def on_modified(self, event):
         logging.debug(f'modified event')
         lines = self.read_file()
         lines_done = []
-        # skip unchanged lines:
-        while lines and self.prev_lines and lines[0] == self.prev_lines.pop(0):
-            lines_done.append(lines.pop(0))
+        skip_unchanged = True
         while lines:
             cell = [lines.pop(0)]
-            if cell[0].startswith('#: '):
-                continue
-            while self.ip.check_complete('\n'.join(cell))[0] == 'incomplete' and lines:
+            while lines and (self.check_incomplete(cell) or lines[0].startswith('#: ')):
                 cell.append(lines.pop(0))
-            cell[-1] = cell[-1].split(' #: ')[0]
-            logging.debug('>>> '+'\n>>> '.join(cell))
+            if skip_unchanged:
+                for line in cell:
+                    if len(self.prev_lines)==0 or line != self.prev_lines.pop(0):
+                        skip_unchanged = False
+                        break
+                else:
+                    lines_done += cell
+                    continue
+            cell = [l.split(' #: ')[0] for l in cell if not l.startswith('#: ')]
             self.display_lines = []
-            result = self.ip.run_cell('\n'.join(cell), store_history=False)
-            if result.error_in_exec:
-                result.result = '❌'
-            elif result.result is not None:
-                res = str(result.result).replace('\n',' ')
-                cell[-1] += f' #: {res}'
+            result = self.run_cell(cell)
+            if result:
+                cell[-1] += f' #: {result}'
             cell += self.display_lines
-            if result.result is not None or self.display_lines:
+            if result or self.display_lines:
                 self.write_file(lines_done + cell + lines)
             lines_done += cell
         self.write_file(lines_done)
         self.prev_lines = lines_done
 
 class NotepadObserver(Observer):
-    def __init__(self, file_path, timeout=1):
+    def __init__(self, file_path, debug=False, timeout=1):
         super().__init__(timeout=timeout)
-        self.handler = NotepadFileHandler(self, file_path)
+        self.handler = NotepadFileHandler(self, file_path, debug)
         self.schedule(self.handler, os.path.dirname(file_path))
 
 def main():
@@ -88,7 +103,7 @@ def main():
 
     file_path = os.path.abspath(args.file)
     print(f'Watching: {file_path}')
-    observer = NotepadObserver(file_path)
+    observer = NotepadObserver(file_path, args.debug)
     observer.start()
     try:
         while True:
