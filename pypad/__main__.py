@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import signal
-import builtins
 import argparse
 import logging
 import threading
@@ -11,6 +10,11 @@ from IPython.terminal.ipapp import TerminalIPythonApp
 from traitlets.config.loader import Config
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
+
+logger = logging.getLogger(__name__)
+h = logging.StreamHandler()
+h.setFormatter(logging.Formatter('%(relativeCreated)d: %(message)s'))
+logger.addHandler(h)
 
 class PyPad():
     def __init__(self, file_path, debug=False):
@@ -26,12 +30,13 @@ class PyPad():
         config.TerminalIPythonApp.display_banner = False
         config.PlainTextFormatter.max_width = 120
         config.HistoryAccessor.enabled = False
-        config.InteractiveShell.cache_size = 0
+        config.InteractiveShell.cache_size = 3 # keep only _ __ ___
         ipapp = TerminalIPythonApp.instance(config=config)
         ipapp.initialize()
         self.ip:TerminalInteractiveShell = ipapp.shell
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
-        builtins.display = self.display
+        self.ip.displayhook.write_output_prompt = lambda: None
+        self.register_mime_renderer('text/plain', self.text_mime_renderer)
 
         self.modified = threading.Condition()
         print(f'Watching: {file_path}')
@@ -61,9 +66,13 @@ class PyPad():
         self.observer.stop()
         self.observer.join()
 
-    def display(self, obj):
-        lines = self.ip.display_formatter.formatters['text/plain'](obj).splitlines()
-        self.display_lines += ['#: ' + l.rstrip() for l in lines]
+    def text_mime_renderer(self, data, metadata):
+        self.display_lines += data.splitlines()
+
+    def register_mime_renderer(self, mime, handler):
+        self.ip.display_formatter.active_types.append(mime)
+        self.ip.display_formatter.formatters[mime].enabled = True
+        self.ip.mime_renderers[mime] = handler
 
     def check_complete(self, lines):
         return self.ip.check_complete('\n'.join(lines))
@@ -87,7 +96,7 @@ class PyPad():
         need_write = False
         self.display_lines = []
 
-        result = self.ip.run_cell('\n'.join(lines), store_history=False, silent=not self.debug)
+        result = self.ip.run_cell('\n'.join(lines), store_history=False)
         error = result.error_in_exec or result.error_before_exec
         if error:
             if isinstance(error, SyntaxError) and error.lineno < len(lines):
@@ -95,12 +104,12 @@ class PyPad():
             else:
                 lines[-1] += f' #: ❌ {type(error).__name__}: {error}'.replace('\n',' ')
             need_write = True
-        elif result.result is not None:
-            lines[-1] += f' #: {result.result}'.replace('\n',' ')
-            need_write = True
         if self.display_lines:
             need_write = True
-            lines.extend(self.display_lines)
+            if len(self.display_lines) == 1:
+                lines[-1] += f' #: {self.display_lines[0]}'
+            else:
+                lines.extend(['#: ' + l.rstrip() for l in self.display_lines])
         return need_write
 
     def run_file(self):
@@ -152,7 +161,7 @@ def main():
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    logging.basicConfig(format='%(relativeCreated)d: %(message)s', level=logging.DEBUG if args.debug else logging.INFO)
+    logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
 
     file_path = os.path.abspath(args.file)
     pypad = PyPad(file_path, args.debug)

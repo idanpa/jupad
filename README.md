@@ -4,9 +4,9 @@ Life is too short for a full-blown jupyter notebook.
 
 ## Usage
 ```
-pypad my_notepad.py
+pypad ./notepad.py
 ```
-each save of the file would trigger execution of (modified) lines, results are printed inline, `display` calls would print in new lines.
+track changes in `notepad.py`, excute code blocks and print results to file inline.
 
 
 ## Installation 
