@@ -25,7 +25,12 @@ class PyPad(IPython.core.magic.Magics):
 
         self.ip:TerminalInteractiveShell = ip
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
-        self.ip.displayhook.write_output_prompt = lambda: None
+        self.hijack_display = False
+        write_output_prompt = self.ip.displayhook.write_output_prompt
+        def write_output_prompt_if_not_hijacked():
+            if not self.hijack_display:
+                write_output_prompt()
+        self.ip.displayhook.write_output_prompt = write_output_prompt_if_not_hijacked
         self.display_lines = []
         self.register_mime_renderer('text/plain', self.text_mime_renderer)
 
@@ -62,7 +67,10 @@ class PyPad(IPython.core.magic.Magics):
         self.observer.join()
 
     def text_mime_renderer(self, data, metadata):
-        self.display_lines += data.splitlines()
+        if self.hijack_display:
+            self.display_lines += data.splitlines()
+        else:
+            print(data)
 
     def register_mime_renderer(self, mime, handler):
         self.ip.display_formatter.active_types.append(mime)
@@ -89,21 +97,24 @@ class PyPad(IPython.core.magic.Magics):
     def run_cell(self, lines):
         self.logger.debug('>>> ' + '\n... '.join(lines))
         need_write = False
-        self.display_lines = []
 
+        self.display_lines = []
+        self.hijack_display = True
         coro = self.ip.run_cell_async('\n'.join(lines), store_history=False)
         result_future = asyncio.run_coroutine_threadsafe(coro, self.ip.pt_loop) # what if pt_loop doesn't exist
         result = result_future.result() # TODO: timeout
+        self.hijack_display = False
+
         error = result.error_in_exec or result.error_before_exec
         if error:
+            need_write = True
             if isinstance(error, SyntaxError) and error.lineno < len(lines):
                 lines[error.lineno - 1] += f' #: ❌ SyntaxError: {error}'.replace('\n',' ')
             else:
                 lines[-1] += f' #: ❌ {type(error).__name__}: {error}'.replace('\n',' ')
-            need_write = True
         if self.display_lines:
             need_write = True
-            if len(self.display_lines) == 1:
+            if len(self.display_lines) == 1 and len(lines) == 1:
                 lines[-1] += f' #: {self.display_lines[0]}'
             else:
                 lines.extend(['#: ' + l.rstrip() for l in self.display_lines])
