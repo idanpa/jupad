@@ -13,7 +13,7 @@ from watchdog.observers import Observer
 class PyPad(IPython.core.magic.Magics):
     debug = traitlets.Bool(False, config=True)
 
-    def __init__(self, ip):
+    def __init__(self, ip:TerminalInteractiveShell):
         super(PyPad, self).__init__(ip)
         self.prev_lines = []
 
@@ -23,7 +23,8 @@ class PyPad(IPython.core.magic.Magics):
         self.logger.addHandler(h)
         self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
 
-        self.ip:TerminalInteractiveShell = ip
+        self.ip = ip
+        self.ip.enable_pylab()
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
         self.hijack_display = False
         write_output_prompt = self.ip.displayhook.write_output_prompt
@@ -36,6 +37,7 @@ class PyPad(IPython.core.magic.Magics):
 
     @IPython.core.magic.line_magic
     def notepad(self, file_path):
+        file_path = os.path.abspath(file_path)
         t = threading.Thread(target=self.run, args=[file_path], daemon=True)
         t.start()
 
@@ -120,27 +122,35 @@ class PyPad(IPython.core.magic.Magics):
                 lines.extend(['#: ' + l.rstrip() for l in self.display_lines])
         return need_write
 
+    def pop_cell(self, lines):
+        cell = [lines.pop(0)]
+        if cell[0].startswith('# %%'):
+            while lines and not lines[0].startswith('# %%'):
+                cell.append(lines.pop(0))
+            return cell
+        while lines:
+            status, indent = self.check_complete(cell)
+            if status == 'complete':
+                break
+            if indent != '':
+                while lines and (lines[0].startswith(indent) or self.is_empty(lines[0])):
+                    cell.append(lines.pop(0))
+            if self.check_complete(cell + [''])[0] == 'complete':
+                break
+            if lines:
+                cell.append(lines.pop(0))
+        # add output to cell:
+        while lines and lines[0].startswith('#:'):
+            cell.append(lines.pop(0))
+        return cell
+
     def run_file(self):
         self.logger.debug('run_file')
         lines = self.read_file()
         lines_done = []
         skip_unchanged = True
         while lines:
-            cell = [lines.pop(0)]
-            while lines:
-                status, indent = self.check_complete(cell)
-                if status == 'complete':
-                    break
-                if indent != '':
-                    while lines and (lines[0].startswith(indent) or self.is_empty(lines[0])):
-                        cell.append(lines.pop(0))
-                if self.check_complete(cell + [''])[0] == 'complete':
-                    break
-                if lines:
-                    cell.append(lines.pop(0))
-
-            while lines and lines[0].startswith('#:'):
-                cell.append(lines.pop(0))
+            cell = self.pop_cell(lines)
             if skip_unchanged:
                 for line in cell:
                     if len(self.prev_lines)==0 or line != self.prev_lines.pop(0):
@@ -156,7 +166,7 @@ class PyPad(IPython.core.magic.Magics):
                     lines.insert(0, cell.pop())
                 else:
                     break
-            cell = [l.split('#:')[0] for l in cell]
+            cell = [l.split('#:')[0].rstrip() for l in cell]
             if self.run_cell(cell):
                 self.write_file(lines_done + cell + lines)
             lines_done += cell

@@ -1,4 +1,3 @@
-import os
 import sys
 import argparse
 import IPython
@@ -10,15 +9,12 @@ def main():
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    file_path = os.path.abspath(args.file)
-
     config = Config()
     config.PyPad.debug = args.debug
     config.TerminalInteractiveShell.term_title = False
     config.TerminalIPythonApp.display_banner = False
-    config.PlainTextFormatter.max_width = 120
     config.InteractiveShellApp.extra_extensions = ['pypad']
-    config.InteractiveShellApp.exec_lines = [f'%notepad {file_path}']
+    config.InteractiveShellApp.exec_lines = [f'%notepad {args.file}']
     sys.argv = [sys.argv[0]]
     IPython.start_ipython(config=config)
 
