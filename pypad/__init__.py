@@ -130,7 +130,7 @@ class PyPad():
                 if lines:
                     cell.append(lines.pop(0))
 
-            while lines and lines[0].startswith('#: '):
+            while lines and lines[0].startswith('#:'):
                 cell.append(lines.pop(0))
             if skip_unchanged:
                 for line in cell:
@@ -141,13 +141,13 @@ class PyPad():
                     lines_done += cell
                     continue
             while len(cell) > 1:
-                if cell[-1].startswith('#: '):
+                if cell[-1].startswith('#:'):
                     cell.pop()
                 elif self.is_empty(cell[-1]):
                     lines.insert(0, cell.pop())
                 else:
                     break
-            cell = [l.split(' #: ')[0] for l in cell]
+            cell = [l.split('#:')[0] for l in cell]
             if self.run_cell(cell):
                 self.write_file(lines_done + cell + lines)
             lines_done += cell
