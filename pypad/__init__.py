@@ -1,27 +1,19 @@
 import os
 import time
-import asyncio
 import logging
-import threading
+import asyncio
 import traitlets
 import IPython
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
 from watchdog.events import PatternMatchingEventHandler
-from watchdog.observers import Observer
+from .utils import logger, PausableObserver
 
 @IPython.core.magic.magics_class
 class PyPad(IPython.core.magic.Magics):
     debug = traitlets.Bool(False, config=True)
 
-    def __init__(self, ip:TerminalInteractiveShell):
+    def __init__(self, ip:IPython.terminal.interactiveshell.TerminalInteractiveShell):
         super(PyPad, self).__init__(ip)
-        self.prev_lines = []
-
-        self.logger = logging.getLogger(__name__)
-        h = logging.StreamHandler()
-        h.setFormatter(logging.Formatter('%(relativeCreated)d: %(message)s'))
-        self.logger.addHandler(h)
-        self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
+        logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
 
         self.ip = ip
         self.ip.enable_pylab()
@@ -32,6 +24,7 @@ class PyPad(IPython.core.magic.Magics):
             if not self.hijack_display:
                 write_output_prompt()
         self.ip.displayhook.write_output_prompt = write_output_prompt_if_not_hijacked
+        self.prev_lines = []
         self.display_lines = []
         self.register_mime_renderer('text/plain', self.text_mime_renderer)
 
@@ -41,13 +34,15 @@ class PyPad(IPython.core.magic.Magics):
         self.file_path = os.path.abspath(file_path)
         self.handler = PatternMatchingEventHandler(patterns=[self.file_path])
         self.handler.on_modified = self.on_modified
-        self.observer = Observer(self.file_path)
+        self.observer = PausableObserver(self.file_path)
         self.observer.schedule(self.handler, os.path.dirname(self.file_path))
         self.observer.start()
 
     def on_modified(self, event):
-        self.logger.debug('on_modified')
-        self.run_file()
+        with self.observer.pause():
+            logger.debug('on_modified')
+            self.run_file()
+            time.sleep(.2) # let last write propegate
 
     def text_mime_renderer(self, data, metadata):
         if self.hijack_display:
@@ -75,10 +70,10 @@ class PyPad(IPython.core.magic.Magics):
             with open(self.file_path, 'w') as f:
                 f.writelines('\n'.join(lines) + '\n')
         except Exception as e:
-            self.logger.error(f'Write file failed, {logging.traceback.format_exc()}')
+            logger.error(f'Write file failed, {logging.traceback.format_exc()}')
 
     def run_cell(self, lines):
-        self.logger.debug('>>> ' + '\n... '.join(lines))
+        logger.debug('>>> ' + '\n... '.join(lines))
         need_write = False
 
         self.display_lines = []
@@ -126,7 +121,6 @@ class PyPad(IPython.core.magic.Magics):
         return cell
 
     def run_file(self):
-        self.logger.debug('run_file')
         lines = self.read_file()
         lines_done = []
         skip_unchanged = True
