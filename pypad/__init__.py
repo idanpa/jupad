@@ -37,36 +37,17 @@ class PyPad(IPython.core.magic.Magics):
 
     @IPython.core.magic.line_magic
     def notepad(self, file_path):
-        file_path = os.path.abspath(file_path)
-        t = threading.Thread(target=self.run, args=[file_path], daemon=True)
-        t.start()
+        print(f'Watching: {file_path}')
+        self.file_path = os.path.abspath(file_path)
+        self.handler = PatternMatchingEventHandler(patterns=[self.file_path])
+        self.handler.on_modified = self.on_modified
+        self.observer = Observer(self.file_path)
+        self.observer.schedule(self.handler, os.path.dirname(self.file_path))
+        self.observer.start()
 
     def on_modified(self, event):
         self.logger.debug('on_modified')
-        with self.modified:
-            self.modified.notify()
-
-    def run(self, file_path):
-        self.file_path = file_path
-        self.modified = threading.Condition()
-        print(f'Watching: {file_path}')
-        self.handler = PatternMatchingEventHandler(patterns=[self.file_path])
-        self.handler.on_modified = self.on_modified
-        self.observer = Observer(file_path)
-        self.observer.schedule(self.handler, os.path.dirname(file_path))
-        self.observer.start()
-        try:
-            while True:
-                self.run_file()
-                time.sleep(.5) # for all modified events
-                with self.modified:
-                    self.modified.wait()
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            self.logger.error(f'Run error, {logging.traceback.format_exc()}')
-        self.observer.stop()
-        self.observer.join()
+        self.run_file()
 
     def text_mime_renderer(self, data, metadata):
         if self.hijack_display:
