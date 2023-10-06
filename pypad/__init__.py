@@ -63,12 +63,18 @@ class PyPad(IPython.core.magic.Magics):
 
     def read_file(self):
         with open(self.file_path, 'r') as f:
-            return f.read().splitlines()
+            self.file_content = f.read()
+            return self.file_content.splitlines()
 
     def write_file(self, lines):
         try:
-            with open(self.file_path, 'w') as f:
-                f.writelines('\n'.join(lines) + '\n')
+            with open(self.file_path, 'r+') as f:
+                if self.file_content != f.read():
+                    raise ValueError('File has been changed')
+                self.file_content = '\n'.join(lines) + '\n'
+                f.truncate(0)
+                f.seek(0)
+                f.write(self.file_content)
         except Exception as e:
             logger.error(f'Write file failed, {logging.traceback.format_exc()}')
 
