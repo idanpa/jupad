@@ -6,6 +6,7 @@ import traitlets
 import IPython
 from watchdog.events import PatternMatchingEventHandler
 from .utils import logger, PausableObserver
+from IPython.core.async_helpers import get_asyncio_loop
 
 @IPython.core.magic.magics_class
 class PyPad(IPython.core.magic.Magics):
@@ -16,7 +17,7 @@ class PyPad(IPython.core.magic.Magics):
         logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
 
         self.ip = ip
-        self.ip.enable_pylab()
+        self.ip.enable_gui('asyncio')
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
         self.hijack_display = False
         write_output_prompt = self.ip.displayhook.write_output_prompt
@@ -85,7 +86,7 @@ class PyPad(IPython.core.magic.Magics):
         self.display_lines = []
         self.hijack_display = True
         coro = self.ip.run_cell_async('\n'.join(lines), store_history=False)
-        result_future = asyncio.run_coroutine_threadsafe(coro, self.ip.pt_loop) # what if pt_loop doesn't exist
+        result_future = asyncio.run_coroutine_threadsafe(coro, get_asyncio_loop())
         result = result_future.result() # TODO: timeout
         self.hijack_display = False
 
@@ -106,10 +107,12 @@ class PyPad(IPython.core.magic.Magics):
 
     def pop_cell(self, lines):
         cell = [lines.pop(0)]
+        # if marked by cell prefix, take the entire cell:
         if cell[0].startswith('# %%'):
             while lines and not lines[0].startswith('# %%'):
                 cell.append(lines.pop(0))
             return cell
+        # otherwise, take the minimal amount of lines that make sense:
         while lines:
             status, indent = self.check_complete(cell)
             if status == 'complete':
@@ -121,7 +124,7 @@ class PyPad(IPython.core.magic.Magics):
                 break
             if lines:
                 cell.append(lines.pop(0))
-        # add output to cell:
+        # add previous output to cell:
         while lines and lines[0].startswith('#:'):
             cell.append(lines.pop(0))
         return cell
