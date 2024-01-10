@@ -17,6 +17,7 @@ classifiers = [
 dependencies = [ 
   "watchdog",
   "ipython",
+  "pyyaml",
 ]
 
 [project.urls]  

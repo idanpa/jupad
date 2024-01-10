@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import asyncio
+import yaml
 import traitlets
 import IPython
 from watchdog.events import PatternMatchingEventHandler
@@ -79,7 +80,22 @@ class PyPad(IPython.core.magic.Magics):
         except Exception as e:
             logger.error(f'Write file failed, {logging.traceback.format_exc()}')
 
-    def run_cell(self, lines):
+    def parse_meta(self, meta, line):
+        try:
+            d = yaml.safe_load('{'+line+'}')
+        except yaml.YAMLError:
+            return
+        if not isinstance(d, dict):
+            return
+        # ignore unknown keys (yaml interpert any string as key)
+        for k in ['timeout', 'cache', 'figure']:
+            if k in d:
+                meta[k] = d[k]
+
+    def dump_meta(self, meta):
+        return yaml.safe_dump(meta).replace('\n',', ').strip('{}, ')
+
+    def run_cell(self, lines, meta):
         logger.debug('>>> ' + '\n... '.join(lines))
         need_write = False
 
@@ -97,12 +113,18 @@ class PyPad(IPython.core.magic.Magics):
                 lines[error.lineno - 1] += f' #: ❌ SyntaxError: {error}'.replace('\n',' ')
             else:
                 lines[-1] += f' #: ❌ {type(error).__name__}: {error}'.replace('\n',' ')
+        if meta:
+            need_write = True
+            if lines[0].startswith('# %%'):
+                lines[0] = f'# %% {self.dump_meta(meta)}'
+            else:
+                lines[0] += f' #: {self.dump_meta(meta)}'
         if self.display_lines:
             need_write = True
-            if len(self.display_lines) == 1 and len(lines) == 1:
-                lines[-1] += f' #: {self.display_lines[0]}'
-            else:
+            if lines[0].startswith('# %%') or meta or len(self.display_lines) > 1 or len(lines) > 1:
                 lines.extend(['#: ' + l.rstrip() for l in self.display_lines])
+            else:
+                lines[-1] += f' #: {self.display_lines[0]}'
         return need_write
 
     def pop_cell(self, lines):
@@ -143,6 +165,7 @@ class PyPad(IPython.core.magic.Magics):
                 else:
                     lines_done += cell
                     continue
+            # remove results from cells we are about to run:
             while len(cell) > 1:
                 if cell[-1].startswith('#:'):
                     cell.pop()
@@ -150,8 +173,14 @@ class PyPad(IPython.core.magic.Magics):
                     lines.insert(0, cell.pop())
                 else:
                     break
-            cell = [l.split('#:')[0].rstrip() for l in cell]
-            if self.run_cell(cell):
+            meta = {}
+            for i in range(len(cell)):
+                sp = cell[i].split('#:')
+                self.parse_meta(meta, ''.join(sp[1:]))
+                cell[i] = sp[0].rstrip()
+            if cell[0].startswith('# %%'):
+                self.parse_meta(meta, cell[0].removeprefix('# %%'))
+            if self.run_cell(cell, meta):
                 self.write_file(lines_done + cell + lines)
             lines_done += cell
         self.prev_lines = lines_done
