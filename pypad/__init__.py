@@ -73,12 +73,14 @@ class PyPad(IPython.core.magic.Magics):
     def write_file(self, lines):
         try:
             with open(self.file_path, 'r+') as f:
-                if self.file_content != f.read():
+                curr_file_content = f.read()
+                if self.file_content != curr_file_content:
                     raise ValueError('File has been changed')
                 self.file_content = '\n'.join(lines) + '\n'
-                f.truncate(0)
-                f.seek(0)
-                f.write(self.file_content)
+                if self.file_content != curr_file_content:
+                    f.truncate(0)
+                    f.seek(0)
+                    f.write(self.file_content)
         except Exception as e:
             logger.error(f'Write file failed, {logging.traceback.format_exc()}')
 
@@ -99,35 +101,29 @@ class PyPad(IPython.core.magic.Magics):
 
     def run_cell(self, lines, meta):
         logger.debug('>>> ' + '\n... '.join(lines))
-        need_write = False
 
         self.display_lines = []
         self.hijack_display = True
         coro = self.ip.run_cell_async('\n'.join(lines), store_history=False)
         result_future = asyncio.run_coroutine_threadsafe(coro, get_asyncio_loop())
         result = result_future.result() # TODO: timeout
-        self.hijack_display = False
 
         error = result.error_in_exec or result.error_before_exec
         if error:
-            need_write = True
             if isinstance(error, SyntaxError) and error.lineno < len(lines):
                 lines[error.lineno - 1] += f' #: ❌ SyntaxError: {error}'.replace('\n',' ')
             else:
                 lines[-1] += f' #: ❌ {type(error).__name__}: {error}'.replace('\n',' ')
         if meta:
-            need_write = True
             if lines[0].startswith('# %%'):
                 lines[0] = f'# %% {self.dump_meta(meta)}'
             else:
                 lines[0] += f' #: {self.dump_meta(meta)}'
         if self.display_lines:
-            need_write = True
             if lines[0].startswith('# %%') or meta or len(self.display_lines) > 1 or len(lines) > 1:
                 lines.extend(['#: ' + l.rstrip() for l in self.display_lines])
             else:
                 lines[-1] += f' #: {self.display_lines[0]}'
-        return need_write
 
     def pop_cell(self, lines):
         cell = [lines.pop(0)]
@@ -154,11 +150,11 @@ class PyPad(IPython.core.magic.Magics):
         return cell
 
     def run_file(self):
-        lines = self.read_file()
+        lines_tbd = self.read_file()
         lines_done = []
         skip_unchanged = True
-        while lines:
-            cell = self.pop_cell(lines)
+        while lines_tbd:
+            cell = self.pop_cell(lines_tbd)
             if skip_unchanged:
                 for line in cell:
                     if len(self.prev_lines)==0 or line != self.prev_lines.pop(0):
@@ -172,7 +168,7 @@ class PyPad(IPython.core.magic.Magics):
                 if cell[-1].startswith('#:'):
                     cell.pop()
                 elif self.is_empty(cell[-1]):
-                    lines.insert(0, cell.pop())
+                    lines_tbd.insert(0, cell.pop())
                 else:
                     break
             meta = {}
@@ -182,8 +178,8 @@ class PyPad(IPython.core.magic.Magics):
                 cell[i] = sp[0].rstrip()
             if cell[0].startswith('# %%'):
                 self.parse_meta(meta, cell[0].removeprefix('# %%'))
-            if self.run_cell(cell, meta):
-                self.write_file(lines_done + cell + lines)
+            self.run_cell(cell, meta)
+            self.write_file(lines_done + cell + lines_tbd)
             lines_done += cell
         self.prev_lines = lines_done
         if not skip_unchanged:
