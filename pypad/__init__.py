@@ -5,20 +5,21 @@ import asyncio
 import yaml
 import traitlets
 import IPython
-from watchdog.events import PatternMatchingEventHandler
+from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
 from .utils import logger, PausableObserver
 from IPython.core.async_helpers import get_asyncio_loop
 
 @IPython.core.magic.magics_class
 class PyPad(IPython.core.magic.Magics):
     debug = traitlets.Bool(False, config=True)
+    timeout = traitlets.Int(30, allow_none=True, config=True)
 
     def __init__(self, ip:IPython.terminal.interactiveshell.TerminalInteractiveShell):
         super(PyPad, self).__init__(ip)
         logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
 
         self.ip = ip
-        self.ip.enable_gui('asyncio')
+        self.ip.enable_gui('asyncio') # to run cells on the event loop
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
         self.hijack_display = False
         write_output_prompt = self.ip.displayhook.write_output_prompt
@@ -38,6 +39,7 @@ class PyPad(IPython.core.magic.Magics):
         self.handler.on_modified = self.on_modified
         self.observer = PausableObserver(self.file_path)
         self.observer.schedule(self.handler, os.path.dirname(self.file_path))
+        list(self.observer.emitters)[0].queue_event(FileModifiedEvent(self.file_path))
         self.observer.start()
 
     def on_modified(self, event):
