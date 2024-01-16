@@ -7,6 +7,7 @@ import traitlets
 import IPython
 from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
 from IPython.core.async_helpers import get_asyncio_loop
+from contextlib import contextmanager
 
 from .utils import *
 
@@ -22,15 +23,11 @@ class PyPad(IPython.core.magic.Magics):
         self.ip = ip
         self.ip.enable_gui('asyncio') # to run cells on the event loop
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
-        self.hijack_display = False
-        write_output_prompt = self.ip.displayhook.write_output_prompt
-        def write_output_prompt_if_not_hijacked():
-            if not self.hijack_display:
-                write_output_prompt()
-        self.ip.displayhook.write_output_prompt = write_output_prompt_if_not_hijacked
         self.prev_lines = []
         self.display_lines = []
-        self.register_mime_renderer('text/plain', self.text_mime_renderer)
+        self.ip.display_formatter.active_types.append('text/plain')
+        self.ip.display_formatter.formatters['text/plain'].enabled = True
+        self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_print
 
     @IPython.core.magic.line_magic
     def notepad(self, file_path):
@@ -47,7 +44,8 @@ class PyPad(IPython.core.magic.Magics):
         with self.observer.pause():
             while True:
                 try:
-                    self.run_file()
+                    with self.run_context():
+                        self.run_file()
                     break
                 except FileRemodifiedError:
                     pass
@@ -55,16 +53,22 @@ class PyPad(IPython.core.magic.Magics):
                     logger.error(f'Run file failed, {logging.traceback.format_exc()}')
             time.sleep(.2) # let last write propegate
 
-    def text_mime_renderer(self, data, metadata):
-        if self.hijack_display:
-            self.display_lines += data.splitlines()
-        else:
-            print(data)
+    def text_mime_renderer_to_display_lines(self, data, metadata):
+        self.display_lines += data.splitlines()
 
-    def register_mime_renderer(self, mime, handler):
-        self.ip.display_formatter.active_types.append(mime)
-        self.ip.display_formatter.formatters[mime].enabled = True
-        self.ip.mime_renderers[mime] = handler
+    def text_mime_renderer_print(self, data, metadata):
+        print(data)
+
+    @contextmanager
+    def run_context(self):
+        write_output_prompt = self.ip.displayhook.write_output_prompt
+        try:
+            self.ip.displayhook.write_output_prompt = lambda : None
+            self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_to_display_lines
+            yield
+        finally:
+            self.ip.displayhook.write_output_prompt = write_output_prompt
+            self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_print
 
     def check_complete(self, lines):
         return self.ip.check_complete('\n'.join(lines))
@@ -108,7 +112,6 @@ class PyPad(IPython.core.magic.Magics):
         logger.debug('>>> ' + '\n... '.join(lines))
 
         self.display_lines = []
-        self.hijack_display = True
         coro = self.ip.run_cell_async('\n'.join(lines), store_history=False)
         result_future = asyncio.run_coroutine_threadsafe(coro, get_asyncio_loop())
         result = result_future.result() # TODO: timeout
