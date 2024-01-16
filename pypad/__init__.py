@@ -61,14 +61,26 @@ class PyPad(IPython.core.magic.Magics):
 
     @contextmanager
     def run_context(self):
+        def nop(*args, **kwargs):
+            pass
         write_output_prompt = self.ip.displayhook.write_output_prompt
+        showtraceback = self.ip.showtraceback
+        showsyntaxerror = self.ip.showsyntaxerror
+        showindentationerror = self.ip.showindentationerror
+        showtraceback = self.ip.showtraceback
         try:
-            self.ip.displayhook.write_output_prompt = lambda : None
             self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_to_display_lines
+            self.ip.displayhook.write_output_prompt = nop
+            self.ip.showsyntaxerror = nop
+            self.ip.showindentationerror = nop
+            self.ip.showtraceback = nop
             yield
         finally:
-            self.ip.displayhook.write_output_prompt = write_output_prompt
             self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_print
+            self.ip.displayhook.write_output_prompt = write_output_prompt
+            self.ip.showsyntaxerror = showsyntaxerror
+            self.ip.showindentationerror = showindentationerror
+            self.ip.showtraceback = showtraceback
 
     def check_complete(self, lines):
         return self.ip.check_complete('\n'.join(lines))
