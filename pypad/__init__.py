@@ -6,8 +6,9 @@ import yaml
 import traitlets
 import IPython
 from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
-from .utils import logger, PausableObserver
 from IPython.core.async_helpers import get_asyncio_loop
+
+from .utils import *
 
 @IPython.core.magic.magics_class
 class PyPad(IPython.core.magic.Magics):
@@ -44,8 +45,14 @@ class PyPad(IPython.core.magic.Magics):
 
     def on_modified(self, event):
         with self.observer.pause():
-            logger.debug('on_modified')
-            self.run_file()
+            while True:
+                try:
+                    self.run_file()
+                    break
+                except FileRemodifiedError:
+                    pass
+                except Exception:
+                    logger.error(f'Run file failed, {logging.traceback.format_exc()}')
             time.sleep(.2) # let last write propegate
 
     def text_mime_renderer(self, data, metadata):
@@ -71,18 +78,16 @@ class PyPad(IPython.core.magic.Magics):
             return self.file_content.splitlines()
 
     def write_file(self, lines):
-        try:
-            with open(self.file_path, 'r+') as f:
-                curr_file_content = f.read()
-                if self.file_content != curr_file_content:
-                    raise ValueError('File has been changed')
-                self.file_content = '\n'.join(lines) + '\n'
-                if self.file_content != curr_file_content:
-                    f.truncate(0)
-                    f.seek(0)
-                    f.write(self.file_content)
-        except Exception as e:
-            logger.error(f'Write file failed, {logging.traceback.format_exc()}')
+        with open(self.file_path, 'r+') as f:
+            curr_file_content = f.read()
+            if self.file_content != curr_file_content:
+                logger.debug('File remodified')
+                raise FileRemodifiedError()
+            self.file_content = '\n'.join(lines) + '\n'
+            if self.file_content != curr_file_content:
+                f.truncate(0)
+                f.seek(0)
+                f.write(self.file_content)
 
     def parse_meta(self, meta, line):
         try:
@@ -150,6 +155,7 @@ class PyPad(IPython.core.magic.Magics):
         return cell
 
     def run_file(self):
+        logger.debug('run_file')
         lines_tbd = self.read_file()
         lines_done = []
         skip_unchanged = True

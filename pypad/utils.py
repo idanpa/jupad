@@ -16,3 +16,5 @@ class PausableObserver(Observer):
             yield
         finally:
             self.event_queue.put = orig_put
+
+class FileRemodifiedError(ValueError): pass
