@@ -22,6 +22,7 @@ class PyPad(IPython.core.magic.Magics):
 
         self.ip = ip
         self.ip.enable_gui('asyncio') # to run cells on the event loop
+        self.loop = get_asyncio_loop() # avoid race in the creation
         self.ip.input_transformer_manager.cleanup_transforms = [] # don't ignore indentation
         self.prev_lines = []
         self.display_lines = []
