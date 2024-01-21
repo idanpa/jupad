@@ -3,8 +3,10 @@ import time
 import logging
 import asyncio
 import yaml
+import shutil
 import traitlets
 import IPython
+from prompt_toolkit.styles import Style, merge_styles
 from watchdog.events import PatternMatchingEventHandler, FileModifiedEvent
 from IPython.core.async_helpers import get_asyncio_loop
 from contextlib import contextmanager
@@ -29,10 +31,19 @@ class PyPad(IPython.core.magic.Magics):
         self.ip.display_formatter.active_types.append('text/plain')
         self.ip.display_formatter.formatters['text/plain'].enabled = True
         self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_print
+        self.ip.pt_app.style = merge_styles([self.ip.pt_app.style,
+            Style([('bottom-toolbar', 'noreverse')])])
+
+    def bottom_toolbar(self, status):
+        n_col, n_row = shutil.get_terminal_size()
+        file_path = self.file_path
+        if len(file_path) > n_col-len(status)-5:
+            file_path = '...' + file_path[-(n_col-len(status)-8):]
+        self.ip.pt_app.bottom_toolbar = status.ljust(n_col-len(file_path)-1) + file_path
+        self.ip.pt_app.app.invalidate()
 
     @IPython.core.magic.line_magic
     def notepad(self, file_path):
-        print(f'Watching: {file_path}')
         self.file_path = os.path.abspath(file_path)
         self.handler = PatternMatchingEventHandler(patterns=[self.file_path])
         self.handler.on_modified = self.on_modified
@@ -40,6 +51,7 @@ class PyPad(IPython.core.magic.Magics):
         self.observer.schedule(self.handler, os.path.dirname(self.file_path))
         list(self.observer.emitters)[0].queue_event(FileModifiedEvent(self.file_path))
         self.observer.start()
+        self.bottom_toolbar('watching')
 
     def on_modified(self, event):
         with self.observer.pause():
@@ -70,6 +82,7 @@ class PyPad(IPython.core.magic.Magics):
         showindentationerror = self.ip.showindentationerror
         showtraceback = self.ip.showtraceback
         try:
+            self.bottom_toolbar('running')
             self.ip.mime_renderers['text/plain'] = self.text_mime_renderer_to_display_lines
             self.ip.displayhook.write_output_prompt = nop
             self.ip.showsyntaxerror = nop
@@ -82,6 +95,7 @@ class PyPad(IPython.core.magic.Magics):
             self.ip.showsyntaxerror = showsyntaxerror
             self.ip.showindentationerror = showindentationerror
             self.ip.showtraceback = showtraceback
+            self.bottom_toolbar('watching')
 
     def check_complete(self, lines):
         return self.ip.check_complete('\n'.join(lines))
