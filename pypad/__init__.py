@@ -137,11 +137,22 @@ class PyPad(IPython.core.magic.Magics):
 
     def run_cell(self, lines, meta):
         logger.debug('>>> ' + '\n... '.join(lines))
-
         self.display_lines = []
+        self.assignments = AssignmentsGetter()
+        # self.ip.ast_transformers.append(self.assignments)
+
+        if 'cache' in meta and meta['cache'] and True: # TODO and file exists
+            cache_file_name = None
+            if cache_file_name is None:
+                cache_file_name = 'TODO.pkl'
+
         coro = self.ip.run_cell_async('\n'.join(lines), store_history=False)
         result_future = asyncio.run_coroutine_threadsafe(coro, get_asyncio_loop())
-        result = result_future.result() # TODO: timeout
+        try:
+            result = result_future.result() # TODO: timeout
+        finally:
+            pass
+            # self.ip.ast_transformers.remove(self.assignments)
 
         error = result.error_in_exec or result.error_before_exec
         if error:
