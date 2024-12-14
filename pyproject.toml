@@ -15,9 +15,10 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [ 
-  "watchdog",
   "ipython",
-  "pyyaml",
+  "qtconsole",
+  "PyQt6",
+  "ansi2html",
 ]
 
 [project.urls]  
@@ -25,7 +26,7 @@ dependencies = [
 "Bug Reports" = "https://github.com/idanpa/pypad/issues"
 "Source" = "https://github.com/idanpa/pypad"
 
-[project.scripts]  
+[project.gui-scripts]
 pypad = "pypad.__main__:main"
 
 [tool.setuptools]
