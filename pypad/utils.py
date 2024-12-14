@@ -1,3 +1,4 @@
+import ast
 import logging
 from contextlib import contextmanager
 from watchdog.observers import Observer
@@ -18,3 +19,26 @@ class PausableObserver(Observer):
             self.event_queue.put = orig_put
 
 class FileRemodifiedError(ValueError): pass
+
+class AssignmentsGetter(ast.NodeTransformer, list):
+    def __init__(self):
+        super().__init__()
+
+    def visit_Assign(self, node):
+        self.append(node.target)
+        return self.generic_visit(node)
+
+    def visit_AugAssign(self, node):
+        self.append(node.target)
+        return self.generic_visit(node)
+
+    def visit_Delete(self, node):
+        return self.generic_visit(node)
+
+class ReplaceAssignment(ast.NodeTransformer):
+    def __init__(self, ):
+        super().__init__()
+
+    def visit_Assign(self, node):
+        self.append(node.target)
+        return self.generic_visit(node)
