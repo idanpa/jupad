@@ -3,13 +3,16 @@ import sys
 import logging
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
-from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QTextLength, QTextTableFormat, QTextTableCellFormat, QPainter, QColor
+from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent
+from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QTextLength, QTextTableCell, \
+    QTextTableFormat, QTextTableCellFormat, QPainter, QColor, QKeyEvent
 
 from qtconsole.pygments_highlighter import PygmentsHighlighter
 from qtconsole.base_frontend_mixin import BaseFrontendMixin
 from qtconsole.manager import QtKernelManager
 from qtconsole.completion_widget import CompletionWidget
+
+from IPython.core.inputtransformer2 import TransformerManager
 
 from ansi2html import Ansi2HTMLConverter
 
@@ -25,6 +28,15 @@ class CompletionWidget_(CompletionWidget):
     def _complete_current(self):
         super()._complete_current()
         self._text_edit.execute(self._text_edit.complete_cell_idx, self._text_edit.get_cell_code(self._text_edit.complete_cell_idx))
+
+def get_table_cell_text(cell: QTextTableCell):
+    text = ''
+    cursor = cell.firstCursorPosition()
+    while cursor.block() != cell.lastCursorPosition().block():
+        text += cursor.block().text() + '\n'
+        cursor.movePosition(QTextCursor.NextBlock)
+    text += cursor.block().text()
+    return text
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent):
@@ -93,6 +105,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
+        self.transformer_manager = TransformerManager()
+
+    def is_complete(self, code):
+        return self.transformer_manager.check_complete(code)
+
     def code_cell(self, cell_idx):
         cell = self.table.cellAt(cell_idx, 0)
         assert cell.isValid()
@@ -110,14 +127,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
     def get_cell_code(self, cell_idx):
-        code = ''
-        cell = self.code_cell(cell_idx)
-        cursor = cell.firstCursorPosition()
-        while cursor.block() != cell.lastCursorPosition().block():
-            code += cursor.block().text() + '\n'
-            cursor.movePosition(QTextCursor.NextBlock)
-        code += cursor.block().text()
-        return code
+        return get_table_cell_text(self.code_cell(cell_idx))
 
     def position_changed(self):
         if self.textCursor().position() > self.table.lastCursorPosition().position():
@@ -220,21 +230,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         else:
             self.execute_running = False
 
-    def _handle_is_complete_reply(self, msg):
-        msg_id = msg['parent_header']['msg_id']
-        self.log.debug(f'is_complete_reply ({msg_id.split('_')[-1]})')
-        if msg_id != self.is_complete_msg_id:
-            return
-        status = msg['content'].get('status', 'complete')
-        indent = msg['content'].get('indent', '')
-        if status == 'incomplete':
-            self.textCursor().insertText('\n' + indent)
-        else:
-            cell = self.table.cellAt(self.textCursor())
-            # assert cell.isValid()
-            cell_idx = cell.row()
-            self.insert_cell(cell_idx + 1)
-
     def _handle_complete_reply(self, msg):
         # code from qtconsole:
         msg_id = msg['parent_header']['msg_id']
@@ -319,8 +314,28 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cell_idx = cell.row()
 
         if e.key() == Qt.Key_Return:
-            self.is_complete_msg_id = self.kernel_client.is_complete(self.get_cell_code(cell_idx))
-            return
+            if e.modifiers() & Qt.ShiftModifier:
+                pass # shift+enter always adds a new line
+            else:
+                cursor.setPosition(self.code_cell(cell_idx).firstCursorPosition().position(), QTextCursor.KeepAnchor)
+                is_complete, indent = self.is_complete(cursor.selection().toPlainText())
+                if is_complete == 'incomplete':
+                    cursor.setPosition(cursor.anchor())
+                    self.textCursor().insertText('\n' + indent*' ')
+                    self.execute(cell_idx)
+                else: # 'complete' or 'invalid'
+                    self.insert_cell(cell_idx+1)
+                    cursor.setPosition(self.code_cell(cell_idx).lastCursorPosition().position(), QTextCursor.KeepAnchor)
+                    code = cursor.selection().toPlainText()
+                    cursor.removeSelectedText()
+                    cursor = self.code_cell(cell_idx+1).firstCursorPosition()
+                    cursor.insertText(code)
+                    self.setTextCursor(self.code_cell(cell_idx+1).firstCursorPosition())
+                    if code == '': # no need to re-execute current
+                        self.execute(cell_idx + 1)
+                    else:
+                        self.execute(cell_idx)
+                return
         elif e.key() == Qt.Key_Backspace:
             if mrow_num > 1:
                 self.table.removeRows(mrow, mrow_num)
@@ -361,10 +376,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     self.complete_msg_id = self.kernel_client.complete(code=self.complete_code, cursor_pos=self.complete_pos_in_cell)
                     return
         elif e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
-            if not cursor.hasSelection():
+            if cursor.hasSelection():
+                QApplication.instance().clipboard().setText(cursor.selection().toPlainText())
+            else:
                 self.log.debug('interrupt kernel: ctrl+c')
                 self.kernel_manager.interrupt_kernel()
-                return
+            return
         elif e.key() == Qt.Key_A and (e.modifiers() & Qt.ControlModifier):
             cursor = self.code_cell(0).firstCursorPosition()
             cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position(), QTextCursor.KeepAnchor)
@@ -376,6 +393,17 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         code = self.get_cell_code(cell_idx)
         if code != old_code:
             self.execute(cell_idx, code)
+
+    def insertFromMimeData(self, source: QMimeData):
+        lines = source.text().splitlines()
+        lines.reverse()
+        cursor = self.textCursor()
+        cursor.insertText(lines.pop())
+        while lines:
+            self.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Return,
+                    Qt.KeyboardModifier.NoModifier, '\r', False, 0))
+            cursor = self.textCursor()
+            cursor.insertText(lines.pop())
 
     def paintEvent(self, event):
         painter = QPainter(self.viewport())
