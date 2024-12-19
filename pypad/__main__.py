@@ -18,6 +18,7 @@ from ansi2html import Ansi2HTMLConverter
 
 class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
+        # don't highlight output cells
         cursor = QTextCursor(self.currentBlock())
         table = cursor.currentTable()
         if table and table.cellAt(cursor).column() != 0:
@@ -27,7 +28,7 @@ class Highlighter(PygmentsHighlighter):
 class CompletionWidget_(CompletionWidget):
     def _complete_current(self):
         super()._complete_current()
-        self._text_edit.execute(self._text_edit.complete_cell_idx, self._text_edit.get_cell_code(self._text_edit.complete_cell_idx))
+        self._text_edit.execute(self._text_edit.complete_cell_idx)
 
 def get_table_cell_text(cell: QTextTableCell):
     text = ''
@@ -53,6 +54,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         font.setPointSize(13)
 
         self.setFrameStyle(QFrame.Shape.NoFrame)
+
         Highlighter(self)
 
         self.setFont(font)
@@ -130,7 +132,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return get_table_cell_text(self.code_cell(cell_idx))
 
     def position_changed(self):
-        if self.textCursor().position() > self.table.lastCursorPosition().position():
+        if self.textCursor().currentTable() == None:
             self.setTextCursor(self.code_cell(self.table.rows()-1).lastCursorPosition())
 
     def pos_in_cell(self, cell_idx, cursor):
@@ -273,19 +275,19 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.completion_widget.show_items(cursor, matches, prefix_length=len(prefix))
 
     def _handle_clear_output(self, msg):
-        self.log.debug(f'_handle_clear_output')
+        self.log.debug(f'clear_output')
 
     def _handle_exec_callback(self, msg):
-        self.log.debug(f'_handle_exec_callback')
+        self.log.debug(f'exec_callback')
 
     def _handle_input_request(self, msg):
-        self.log.debug(f'_handle_input_request')
+        self.log.debug(f'input_request')
 
     def _handle_inspect_reply(self, rep):
-        self.log.debug(f'_handle_inspect_reply')
+        self.log.debug(f'inspect_reply')
 
     def _handle_shutdown_reply(self, msg):
-        self.log.debug(f'_handle_shutdown_reply')
+        self.log.debug(f'shutdown_reply')
 
     def _handle_status(self, msg):
         return
@@ -294,14 +296,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         print(msg['content']['text'], end='')
 
     def _handle_kernel_restarted(self, died=True):
-        self.log.debug(f'_handle_kernel_restarted')
+        self.log.debug(f'kernel_restarted')
 
     def _handle_kernel_died(self, since_last_heartbeat):
-        self.log.debug(f'_handle_kernel_died {since_last_heartbeat}')
+        self.log.debug(f'kernel_died {since_last_heartbeat}')
 
     def keyPressEvent(self, e):
+        # always let undo (ctrl+z) propegate
         if e.key() == Qt.Key_Z and (e.modifiers() & Qt.ControlModifier):
-            super().keyPressEvent(e)
+            return super().keyPressEvent(e)
         cursor = self.textCursor()
         if cursor.currentTable() != self.table:
             return
@@ -323,7 +326,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     cursor.setPosition(cursor.anchor())
                     self.textCursor().insertText('\n' + indent*' ')
                     self.execute(cell_idx)
-                else: # 'complete' or 'invalid'
+                else: # 'complete' or 'invalid', add a new cell below
                     self.insert_cell(cell_idx+1)
                     cursor.setPosition(self.code_cell(cell_idx).lastCursorPosition().position(), QTextCursor.KeepAnchor)
                     code = cursor.selection().toPlainText()
