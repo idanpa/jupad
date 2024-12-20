@@ -389,6 +389,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 return
         elif e.key() == Qt.Key_Backspace:
             if mrow_num > 1:
+                if mrow == 0 and mrow_num == self.table.rows():
+                    self.insert_cell(0)
+                    mrow += 1
                 self.table.removeRows(mrow, mrow_num)
                 return
             if cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position():
@@ -404,6 +407,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 return
         elif e.key() == Qt.Key_Delete:
             if mrow_num > 1:
+                if mrow == 0 and mrow_num == self.table.rows():
+                    self.insert_cell(0)
+                    mrow += 1
                 self.table.removeRows(mrow, mrow_num)
                 return
             if (not cursor.hasSelection() and
