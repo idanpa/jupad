@@ -4,8 +4,8 @@ import logging
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent
-from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QTextLength, QTextTableCell, \
-    QTextTableFormat, QTextTableCellFormat, QPainter, QColor, QKeyEvent
+from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QTextLength, QTextCharFormat, QTextFrameFormat, \
+    QTextTableCell, QTextTableFormat, QTextTableCellFormat, QPainter, QColor, QKeyEvent
 
 from qtconsole.pygments_highlighter import PygmentsHighlighter
 from qtconsole.base_frontend_mixin import BaseFrontendMixin
@@ -15,6 +15,19 @@ from qtconsole.completion_widget import CompletionWidget
 from IPython.core.inputtransformer2 import TransformerManager
 
 from ansi2html import Ansi2HTMLConverter
+
+light_theme = {
+    'code_background': QColor('#ffffff'),
+    'out_background': QColor('#fcfcfc'),
+    'separater_color': QColor('#f8f8f8'),
+    'done_color': QColor('#d4f4d4'),
+    'pending_color': QColor('#fcfcfc'),
+    'executing_color': QColor('#f5ca6e'),
+    'error_color': QColor('#f4bdbd'),
+    'inactive_color': QColor('#ffffff'),
+    'active_color': QColor('#f4f4f4'),
+}
+theme = light_theme
 
 class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
@@ -62,14 +75,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.setTabStopDistance(4 * font_metrics.width(' '))
 
         cursor = self.textCursor()
-        self.table = cursor.insertTable(1, 2)
-        table_format = self.table.format()
+        table_format = QTextTableFormat()
         table_format.setBorder(0)
+        table_format.setPadding(-3)
+        table_format.setMargin(0)
         table_format.setWidth(QTextLength(QTextLength.PercentageLength, 100))
         table_format.setColumnWidthConstraints([
             QTextLength(QTextLength.PercentageLength, 50),
             QTextLength(QTextLength.PercentageLength, 50)])
-        self.table.setFormat(table_format)
+        self.table = cursor.insertTable(1, 2, table_format)
 
         self.setTextCursor(self.code_cell(0).firstCursorPosition())
 
@@ -132,8 +146,21 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return get_table_cell_text(self.code_cell(cell_idx))
 
     def position_changed(self):
-        if self.textCursor().currentTable() == None:
+        cursor = self.textCursor()
+        if cursor.currentTable() != self.table:
             self.setTextCursor(self.code_cell(self.table.rows()-1).lastCursorPosition())
+            return
+
+        mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
+        cell = self.table.cellAt(cursor)
+        assert cell.isValid()
+        if mcol_num > 1 or mrow_num > 1 or cell.column() == 1:
+            cell_idx = -1
+        else:
+            cell_idx = cell.row()
+
+        for i in range(self.table.rows()):
+            self.set_cell_active(i, i == cell_idx)
 
     def pos_in_cell(self, cell_idx, cursor):
         cell = self.table.cellAt(cursor)
@@ -150,25 +177,46 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     @staticmethod
     def _out_cell_format(color):
         cell_format = QTextTableCellFormat()
-        cell_format.setLeftBorder(2)
+        cell_format.setLeftBorder(3)
         cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
         cell_format.setLeftBorderBrush(color)
         cell_format.setLeftPadding(4)
+
+        cell_format.setBottomBorder(1)
+        cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        cell_format.setBottomBorderBrush(theme['separater_color'])
+
         return cell_format
 
+    @staticmethod
+    def _code_cell_format(active):
+        cell_format = QTextTableCellFormat()
+        cell_format.setLeftBorder(3)
+        cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        cell_format.setLeftBorderBrush(theme['active_color'] if active else theme['inactive_color'])
+
+        cell_format.setBottomBorder(1)
+        cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        cell_format.setBottomBorderBrush(theme['separater_color'])
+
+        return cell_format
+
+    def set_cell_active(self, cell_idx, active):
+        self.code_cell(cell_idx).setFormat(self._code_cell_format(active))
+
     def set_cell_done(self, cell_idx):
-        self.out_cell(cell_idx).setFormat(self._out_cell_format(Qt.green))
+        self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['done_color']))
 
     def set_cell_pending(self, cell_idx):
-        self.out_cell(cell_idx).setFormat(self._out_cell_format(Qt.gray))
+        self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['pending_color']))
 
     def set_cell_executing(self, cell_idx):
-        self.out_cell(cell_idx).setFormat(self._out_cell_format(Qt.yellow))
+        self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['executing_color']))
         self.set_cell_text(cell_idx, '')
 
     def set_cell_error(self, cell_idx, txt, tooltip=None):
         cell = self.out_cell(cell_idx)
-        cell_format = self._out_cell_format(Qt.red)
+        cell_format = self._out_cell_format(theme['error_color'])
         cell_format.setToolTip(tooltip)
         cell.setFormat(cell_format)
         self.set_cell_text(cell_idx, txt) # after setting tooltip
@@ -310,7 +358,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         cell = self.table.cellAt(cursor)
-        # assert cell.isValid()
+        assert cell.isValid()
         col = cell.column()
         if col == 1 or mcol_num > 1:
             return
@@ -416,9 +464,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         divider_precentage = table_format.columnWidthConstraints()[0].rawValue()
 
         editor_rect = QRect(rect.x(), rect.y(), int(rect.width() * divider_precentage/100), rect.height())
-        painter.fillRect(editor_rect, QColor('white'))
+        painter.fillRect(editor_rect, theme['code_background'])
         out_rect = QRect(rect.x()+editor_rect.width(), rect.y(), rect.width() - editor_rect.width(), rect.height())
-        painter.fillRect(out_rect, QColor('#fcfcfc'))
+        painter.fillRect(out_rect, theme['out_background'])
 
         super().paintEvent(event)
 
