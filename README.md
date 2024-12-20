@@ -1,13 +1,19 @@
-# Python Notepad
+# PyPad - Python Notepad
 
-Life is too short for a full-blown jupyter notebook.
+Inspired by notepad calculators (e.g. [Soulver](https://soulver.app/), [Numbr](https://numbr.dev/))
 
 ## Usage
 ```
-pypad ./notepad.py
+pypad
 ```
-track changes in `notepad.py`, excute code blocks and print results to file inline.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/pypad1.gif">
+    <source media="(prefers-color-scheme: light)" srcset="docs/pypad1.gif">
+    <img src="docs/pypad1.gif">
+  </picture>
+</p>
 
 ## Installation 
 ```
