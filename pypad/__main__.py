@@ -146,10 +146,22 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return get_table_cell_text(self.code_cell(cell_idx))
 
     def position_changed(self):
+        # fix selection to be within one column in table
         cursor = self.textCursor()
-        if cursor.currentTable() != self.table:
-            self.setTextCursor(self.code_cell(self.table.rows()-1).lastCursorPosition())
-            return
+        if cursor.hasSelection():
+            if cursor.position() < self.table.firstCursorPosition().position():
+                cell = self.table.cellAt(cursor.anchor())
+                if cell.isValid():
+                    cursor.setPosition(self.table.cellAt(0, cell.column()).firstCursorPosition().position(), QTextCursor.KeepAnchor)
+            if cursor.position() > self.table.lastCursorPosition().position():
+                cell = self.table.cellAt(cursor.anchor())
+                if cell.isValid():
+                    cursor.setPosition(self.table.cellAt(self.table.rows()-1, cell.column()).lastCursorPosition().position(), QTextCursor.KeepAnchor)
+        elif cursor.position() < self.table.firstCursorPosition().position():
+            cursor.setPosition(self.table.firstCursorPosition().position())
+        elif cursor.position() > self.table.lastCursorPosition().position():
+            cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position())
+        self.setTextCursor(cursor)
 
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         cell = self.table.cellAt(cursor)
@@ -360,9 +372,28 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cell = self.table.cellAt(cursor)
         assert cell.isValid()
         col = cell.column()
+        cell_idx = cell.row()
+        # allow navigation keys to propegate, restrict navigation to one column
+        if e.key() in [Qt.Key_Up, Qt.Key_Down]:
+            return super().keyPressEvent(e)
+        elif e.key() == Qt.Key_Left:
+            if cell.firstCursorPosition().position() == cursor.position() or mrow_num > 1:
+                if cell_idx > 0:
+                    cursor.setPosition(self.table.cellAt(cell_idx-1, col).lastCursorPosition().position(),
+                                       QTextCursor.KeepAnchor if (e.modifiers() & Qt.ShiftModifier) else QTextCursor.MoveAnchor)
+                    self.setTextCursor(cursor)
+                return
+            return super().keyPressEvent(e)
+        elif e.key() == Qt.Key_Right:
+            if cell.lastCursorPosition().position() == cursor.position() or mrow_num > 1:
+                if cell_idx + 1 < self.table.rows():
+                    cursor.setPosition(self.table.cellAt(cell_idx+1, col).firstCursorPosition().position(),
+                                       QTextCursor.KeepAnchor if (e.modifiers() & Qt.ShiftModifier) else QTextCursor.MoveAnchor)
+                    self.setTextCursor(cursor)
+                return
+            return super().keyPressEvent(e)
         if col == 1 or mcol_num > 1:
             return
-        cell_idx = cell.row()
 
         if e.key() == Qt.Key_Return:
             if e.modifiers() & Qt.ShiftModifier:
