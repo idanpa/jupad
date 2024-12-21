@@ -362,10 +362,22 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'kernel_died {since_last_heartbeat}')
 
     def keyPressEvent(self, e):
-        # always let undo (ctrl+z) propegate
+        cursor = self.textCursor()
+        # operations that always propegate:
         if e.key() == Qt.Key_Z and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e)
-        cursor = self.textCursor()
+        elif e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
+            if cursor.hasSelection():
+                QApplication.instance().clipboard().setText(cursor.selection().toPlainText())
+            else:
+                self.log.debug('interrupt kernel: ctrl+c')
+                self.kernel_manager.interrupt_kernel()
+            return
+        elif e.key() == Qt.Key_A and (e.modifiers() & Qt.ControlModifier):
+            cursor = self.code_cell(0).firstCursorPosition()
+            cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position(), QTextCursor.KeepAnchor)
+            self.setTextCursor(cursor)
+            return
         if cursor.currentTable() != self.table:
             return
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
@@ -463,18 +475,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     self.complete_code = self.get_cell_code(cell_idx)
                     self.complete_msg_id = self.kernel_client.complete(code=self.complete_code, cursor_pos=self.complete_pos_in_cell)
                     return
-        elif e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
-            if cursor.hasSelection():
-                QApplication.instance().clipboard().setText(cursor.selection().toPlainText())
-            else:
-                self.log.debug('interrupt kernel: ctrl+c')
-                self.kernel_manager.interrupt_kernel()
-            return
-        elif e.key() == Qt.Key_A and (e.modifiers() & Qt.ControlModifier):
-            cursor = self.code_cell(0).firstCursorPosition()
-            cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position(), QTextCursor.KeepAnchor)
-            self.setTextCursor(cursor)
-            return
 
         old_code = self.get_cell_code(cell_idx)
         super().keyPressEvent(e)
