@@ -85,6 +85,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             QTextLength(QTextLength.PercentageLength, 50)])
         self.table = cursor.insertTable(1, 2, table_format)
 
+        self.execution_count = [None]
         self.setTextCursor(self.code_cell(0).firstCursorPosition())
 
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
@@ -139,6 +140,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def insert_cell(self, cell_idx):
         '''insert cell before the given index'''
         self.table.insertRows(cell_idx, 1)
+        self.execution_count.insert(cell_idx, None)
         self.set_cell_pending(cell_idx)
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
@@ -237,6 +239,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if code is None:
             code = self.get_cell_code(cell_idx)
         self.set_cell_executing(cell_idx)
+        # force '_' to hold the previews cell output:
+        if self.execution_count[cell_idx-1] is not None:
+            code = '_ = _' + str(self.execution_count[cell_idx-1]) + '\n' + code
         # don't stop on error, we interrupt kernel and execute a new cell immediately after, otherwise might get aborted
         self.execute_msg_id = self.kernel_client.execute(code, False, stop_on_error=False)
         self.log.debug(f'execute [{cell_idx}] ({self.execute_msg_id.split('_')[-1]}): {code}')
@@ -283,6 +288,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if msg_id != self.execute_msg_id:
             return
         if status == 'ok':
+            self.execution_count[self.execute_cell_idx] = content['execution_count']
             self.set_cell_done(self.execute_cell_idx)
             if self.execute_cell_idx+1 < self.table.rows():
                 self.execute_cell_idx = self.execute_cell_idx+1
@@ -290,6 +296,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             else:
                 self.execute_running = False
         else:
+            self.execution_count[self.execute_cell_idx] = None
             self.execute_running = False
 
     def _handle_complete_reply(self, msg):
