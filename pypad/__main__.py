@@ -4,7 +4,7 @@ import logging
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent
-from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QTextLength, QTextCharFormat, QTextFrameFormat, \
+from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QFontDatabase, QTextLength, QTextCharFormat, QTextFrameFormat, \
     QTextTableCell, QTextTableFormat, QTextTableCellFormat, QPainter, QColor, QKeyEvent
 
 from qtconsole.pygments_highlighter import PygmentsHighlighter
@@ -58,21 +58,16 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         # so ctrl+z won't undo initialization:
         self.setUndoRedoEnabled(False)
-        if sys.platform == 'win32':
-            font = QFont('Consolas')
-        elif sys.platform == 'darwin':
-            font = QFont('Monaco')
-        else:
-            font = QFont('Monospace')
-        font.setPointSize(13)
 
-        self.setFrameStyle(QFrame.Shape.NoFrame)
-
-        Highlighter(self)
-
+        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        font.setPixelSize(16)
         self.setFont(font)
         font_metrics = QFontMetrics(font)
         self.setTabStopDistance(4 * font_metrics.width(' '))
+
+        Highlighter(self)
+
+        self.setFrameStyle(QFrame.Shape.NoFrame)
 
         cursor = self.textCursor()
         table_format = QTextTableFormat()
