@@ -91,7 +91,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
 
         self.cursorPositionChanged.connect(self.position_changed)
-        self.setUndoRedoEnabled(True)
 
         os.environ['COLUMNS'] = '120'
         kernel_manager = QtKernelManager(kernel_name='python3')
@@ -102,6 +101,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.kernel_manager = kernel_manager
         self.kernel_client = kernel_client
+
+        kernel_client.kernel_info()
 
         self.execute_running = False
         self.execute_cell_idx = -1
@@ -341,6 +342,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     current_pos = cursor.position()
                 self.completion_widget.show_items(cursor, matches, prefix_length=len(prefix))
 
+    def _handle_kernel_info_reply(self, msg):
+        self.log.debug(f'kernel_info_reply')
+        language_info = msg['content']['language_info']
+        self.kernel_info = language_info['name'] + language_info['version']
+        self.setUndoRedoEnabled(True)
+        self.parent().show()
+
     def _handle_clear_output(self, msg):
         self.log.debug(f'clear_output')
 
@@ -568,7 +576,6 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     main_window = MainWindow()
-    main_window.show()
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
