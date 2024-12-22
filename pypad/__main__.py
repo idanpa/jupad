@@ -236,7 +236,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             code = self.get_cell_code(cell_idx)
         self.set_cell_executing(cell_idx)
         # force '_' to hold the previews cell output:
-        if self.execution_count[cell_idx-1] is not None:
+        if cell_idx > 0 and self.execution_count[cell_idx-1] is not None:
             code = '_ = _' + str(self.execution_count[cell_idx-1]) + '\n' + code
         # don't stop on error, we interrupt kernel and execute a new cell immediately after, otherwise might get aborted
         self.execute_msg_id = self.kernel_client.execute(code, False, stop_on_error=False)
@@ -262,6 +262,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         content = msg['content']
         data = content['data']
+        self.execution_count[self.execute_cell_idx] = content['execution_count']
         if 'text/plain' in data:
             self.set_cell_text(self.execute_cell_idx, data['text/plain'])
         else:
@@ -284,7 +285,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if msg_id != self.execute_msg_id:
             return
         if status == 'ok':
-            self.execution_count[self.execute_cell_idx] = content['execution_count']
             self.set_cell_done(self.execute_cell_idx)
             if self.execute_cell_idx+1 < self.table.rows():
                 self.execute_cell_idx = self.execute_cell_idx+1
