@@ -537,11 +537,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return abs(x - self.get_divider_x()) < margin
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            if self.near_divider(event.pos().x()):
-                self.divider_drag_start_pos = event.pos()
-                self.divider_drag = True
-        super().mousePressEvent(event)
+        if event.button() == Qt.LeftButton and self.near_divider(event.pos().x()):
+            self.divider_drag_start_pos = event.pos()
+            self.divider_drag = True
+        else:
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.divider_drag:
@@ -553,12 +553,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.viewport().setCursor(Qt.SplitHCursor)
             else:
                 self.viewport().unsetCursor()
-        super().mouseMoveEvent(event)
+            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.divider_drag = False
-        super().mouseReleaseEvent(event)
+        else:
+            super().mouseReleaseEvent(event)
 
 class MainWindow(QMainWindow):
     def __init__(self):
