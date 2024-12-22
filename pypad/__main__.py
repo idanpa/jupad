@@ -497,11 +497,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         lines.reverse()
         cursor = self.textCursor()
         cursor.insertText(lines.pop())
+        cell = self.table.cellAt(cursor)
+        if cell.isValid():
+            self.execute(cell.row())
         while lines:
             self.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Return,
                     Qt.KeyboardModifier.NoModifier, '\r', False, 0))
-            cursor = self.textCursor()
-            cursor.insertText(lines.pop())
+            self.textCursor().insertText(lines.pop())
 
     def paintEvent(self, event):
         painter = QPainter(self.viewport())
