@@ -206,16 +206,17 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.has_image[self.execute_cell_idx] = False
 
     @join_edit_block
-    def set_cell_img(self, cell_idx, img, format):
+    def set_cell_img(self, cell_idx, img, format, name):
+        # name should be unique to allow undo/redo
         cell = self.out_cell(cell_idx)
         cursor = cell.firstCursorPosition()
         cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
 
         image = QImage()
         image.loadFromData(img, format.upper())
-        self.document().addResource(QTextDocument.ImageResource, QUrl(str(cell_idx)), image)
+        self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
         image_format = QTextImageFormat()
-        image_format.setName(str(cell_idx))
+        image_format.setName(name)
         image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
         cursor.insertImage(image_format)
         self.has_image[self.execute_cell_idx] = True
@@ -302,29 +303,28 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'execute_result ({msg_id.split('_')[-1]})')
         if msg_id != self.execute_msg_id:
             return
-        self._handle_execute_result_or_display_data(msg['content'])
+        self._handle_execute_result_or_display_data(msg['content'], msg_id)
 
     def _handle_display_data(self, msg):
         msg_id = msg['parent_header']['msg_id']
         self.log.debug(f'display_data ({msg_id.split('_')[-1]})')
         if msg_id != self.execute_msg_id:
             return
-        self._handle_execute_result_or_display_data(msg['content'])
+        self._handle_execute_result_or_display_data(msg['content'], msg_id)
 
-    def _handle_execute_result_or_display_data(self, content):
+    def _handle_execute_result_or_display_data(self, content, msg_id):
         data = content['data']
-        metadata = content['metadata']
         if 'execution_count' in content: # only in execute_result
             self.execution_count[self.execute_cell_idx] = content['execution_count']
         if 'image/png' in data or 'image/jpeg' in data:
             image_data = b64decode(data['image/png'].encode('ascii'))
             image_format = 'png' if 'image/png' in data else 'jpg'
-            self.set_cell_img(self.execute_cell_idx, image_data, image_format)
+            self.set_cell_img(self.execute_cell_idx, image_data, image_format, msg_id)
         elif 'text/plain' in data:
             if not self.has_image[self.execute_cell_idx]:
                 self.set_cell_text(self.execute_cell_idx, data['text/plain'])
         else:
-            print(f'execute_result unsupported type {data}')
+            print(f'unsupported type {data}')
 
     def _handle_error(self, msg):
         msg_id = msg['parent_header']['msg_id']
