@@ -316,10 +316,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         data = content['data']
         if 'execution_count' in content: # only in execute_result
             self.execution_count[self.execute_cell_idx] = content['execution_count']
-        if 'image/png' in data or 'image/jpeg' in data:
+        if 'image/png' in data:
             image_data = b64decode(data['image/png'].encode('ascii'))
-            image_format = 'png' if 'image/png' in data else 'jpg'
-            self.set_cell_img(self.execute_cell_idx, image_data, image_format, msg_id)
+            self.set_cell_img(self.execute_cell_idx, image_data, 'PNG', msg_id)
+        elif 'image/jpeg' in data:
+            image_data = b64decode(data['image/jpeg'].encode('ascii'))
+            self.set_cell_img(self.execute_cell_idx, image_data, 'JPG', msg_id)
         elif 'text/plain' in data:
             if not self.has_image[self.execute_cell_idx]:
                 self.set_cell_text(self.execute_cell_idx, data['text/plain'])
