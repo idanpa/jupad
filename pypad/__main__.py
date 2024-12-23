@@ -1,11 +1,14 @@
 import os
 import sys
 import logging
+from base64 import b64decode
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
-from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent
-from PyQt6.QtGui import QFont, QTextCursor, QFontMetrics, QFontDatabase, QTextLength, QTextCharFormat, QTextFrameFormat, \
-    QTextTableCell, QTextTableFormat, QTextTableCellFormat, QPainter, QColor, QKeyEvent
+from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent, QUrl
+from PyQt6.QtGui import QFont, QFontMetrics, QFontDatabase, QImage, \
+    QPainter, QColor, QKeyEvent, \
+    QTextCursor, QTextLength, QTextCharFormat, QTextFrameFormat, QTextBlockFormat, \
+    QTextDocument, QTextImageFormat, QTextTableCell, QTextTableFormat, QTextTableCellFormat
 
 from qtconsole.pygments_highlighter import PygmentsHighlighter
 from qtconsole.base_frontend_mixin import BaseFrontendMixin
@@ -80,7 +83,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             QTextLength(QTextLength.PercentageLength, 50)])
         self.table = cursor.insertTable(1, 2, table_format)
 
+        # if cell has execution result, this specifies the last execution count
         self.execution_count = [None]
+        # if cell has an image
+        self.has_image = [False]
         self.setTextCursor(self.code_cell(0).firstCursorPosition())
 
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
@@ -137,6 +143,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         '''insert cell before the given index'''
         self.table.insertRows(cell_idx, 1)
         self.execution_count.insert(cell_idx, None)
+        self.has_image.insert(cell_idx, False)
         self.set_cell_pending(cell_idx)
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
@@ -183,6 +190,26 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor = cell.firstCursorPosition()
         cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
         cursor.insertText(txt)
+        self.has_image[self.execute_cell_idx] = False
+
+    def set_cell_img(self, cell_idx, img, format, width=-1, height=-1):
+        cell = self.out_cell(cell_idx)
+        cursor = cell.firstCursorPosition()
+        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+
+        image = QImage()
+        image.loadFromData(img, format.upper())
+        if width>0 and height>0:
+            image = image.scaled(width, height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        elif width>0 and height<0:
+            image = image.scaledToWidth(width, Qt.SmoothTransformation)
+        elif width<0 and height>0:
+            image = image.scaledToHeight(height, Qt.SmoothTransformation)
+        self.document().addResource(QTextDocument.ImageResource, QUrl(str(cell_idx)), image)
+        image_format = QTextImageFormat()
+        image_format.setName(str(cell_idx))
+        cursor.insertImage(image_format)
+        self.has_image[self.execute_cell_idx] = True
 
     @staticmethod
     def _out_cell_format(color):
@@ -260,11 +287,29 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'execute_result ({msg_id.split('_')[-1]})')
         if msg_id != self.execute_msg_id:
             return
-        content = msg['content']
+        self._handle_execute_result_or_display_data(msg['content'])
+
+    def _handle_display_data(self, msg):
+        msg_id = msg['parent_header']['msg_id']
+        self.log.debug(f'display_data ({msg_id.split('_')[-1]})')
+        if msg_id != self.execute_msg_id:
+            return
+        self._handle_execute_result_or_display_data(msg['content'])
+
+    def _handle_execute_result_or_display_data(self, content):
         data = content['data']
-        self.execution_count[self.execute_cell_idx] = content['execution_count']
-        if 'text/plain' in data:
-            self.set_cell_text(self.execute_cell_idx, data['text/plain'])
+        metadata = content['metadata']
+        if 'execution_count' in content: # only in execute_result
+            self.execution_count[self.execute_cell_idx] = content['execution_count']
+        if 'image/png' in data or 'image/jpeg' in data:
+            width = int(metadata.get('width', -1))
+            height = int(metadata.get('height', -1))
+            image_data = b64decode(data['image/png'].encode('ascii'))
+            image_format = 'png' if 'image/png' in data else 'jpg'
+            self.set_cell_img(self.execute_cell_idx, image_data, image_format, width, height)
+        elif 'text/plain' in data:
+            if not self.has_image[self.execute_cell_idx]:
+                self.set_cell_text(self.execute_cell_idx, data['text/plain'])
         else:
             print(f'execute_result unsupported type {data}')
 
