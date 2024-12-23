@@ -55,6 +55,16 @@ def get_table_cell_text(cell: QTextTableCell):
     text += cursor.block().text()
     return text
 
+def join_edit_block(fun):
+    def wrapped(*args, **kwargs):
+        self = args[0]
+        self.edit_block_cursor.setPosition(self.textCursor().position())
+        self.edit_block_cursor.joinPreviousEditBlock()
+        ret = fun(*args, **kwargs)
+        self.edit_block_cursor.endEditBlock()
+        return ret
+    return wrapped
+
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent):
         super().__init__(parent)
@@ -126,6 +136,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.transformer_manager = TransformerManager()
 
+        self.edit_block_cursor = self.textCursor()
+
     def is_complete(self, code):
         return self.transformer_manager.check_complete(code)
 
@@ -185,6 +197,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return cursor.position() - cell.firstCursorPosition().position()
         return -1
 
+    @join_edit_block
     def set_cell_text(self, cell_idx, txt):
         cell = self.out_cell(cell_idx)
         cursor = cell.firstCursorPosition()
@@ -192,6 +205,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor.insertText(txt)
         self.has_image[self.execute_cell_idx] = False
 
+    @join_edit_block
     def set_cell_img(self, cell_idx, img, format):
         cell = self.out_cell(cell_idx)
         cursor = cell.firstCursorPosition()
@@ -233,19 +247,25 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         return cell_format
 
+    # @join_edit_block
     def set_cell_active(self, cell_idx, active):
+        return # todo: this is breaking the undo/redo stack
         self.code_cell(cell_idx).setFormat(self._code_cell_format(active))
 
+    @join_edit_block
     def set_cell_done(self, cell_idx):
         self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['done_color']))
 
+    @join_edit_block
     def set_cell_pending(self, cell_idx):
         self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['pending_color']))
 
+    @join_edit_block
     def set_cell_executing(self, cell_idx):
         self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['executing_color']))
         self.set_cell_text(cell_idx, '')
 
+    @join_edit_block
     def set_cell_error(self, cell_idx, txt, tooltip=None):
         cell = self.out_cell(cell_idx)
         cell_format = self._out_cell_format(theme['error_color'])
@@ -410,11 +430,20 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'kernel_died {since_last_heartbeat}')
 
     def keyPressEvent(self, e):
-        cursor = self.textCursor()
         # operations that always propegate:
-        if e.key() == Qt.Key_Z and (e.modifiers() & Qt.ControlModifier):
+        if e.key() in [Qt.Key_Z, Qt.Key_Y] and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e)
-        elif e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
+        elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
+            return super().keyPressEvent(e) # paste handled by insertFromMimeData
+
+        self.edit_block_cursor.setPosition(self.textCursor().position())
+        self.edit_block_cursor.beginEditBlock()
+        self.keyPressEvent2(e)
+        self.edit_block_cursor.endEditBlock()
+
+    def keyPressEvent2(self, e):
+        cursor = self.textCursor()
+        if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
             if cursor.hasSelection():
                 QApplication.instance().clipboard().setText(cursor.selection().toPlainText())
             else:
