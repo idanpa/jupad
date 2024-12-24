@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 from base64 import b64decode
+from contextlib import contextmanager
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent, QUrl
@@ -47,23 +48,9 @@ class CompletionWidget_(CompletionWidget):
         self._text_edit.execute(self._text_edit.complete_cell_idx)
 
 def get_table_cell_text(cell: QTextTableCell):
-    text = ''
     cursor = cell.firstCursorPosition()
-    while cursor.block() != cell.lastCursorPosition().block():
-        text += cursor.block().text() + '\n'
-        cursor.movePosition(QTextCursor.NextBlock)
-    text += cursor.block().text()
-    return text
-
-def join_edit_block(fun):
-    def wrapped(*args, **kwargs):
-        self = args[0]
-        self.edit_block_cursor.setPosition(self.textCursor().position())
-        self.edit_block_cursor.joinPreviousEditBlock()
-        ret = fun(*args, **kwargs)
-        self.edit_block_cursor.endEditBlock()
-        return ret
-    return wrapped
+    cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+    return cursor.selection().toPlainText()
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent):
@@ -201,29 +188,47 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return cursor.position() - cell.firstCursorPosition().position()
         return -1
 
-    @join_edit_block
+    @contextmanager
+    def edit_block(self):
+        self.edit_block_cursor.setPosition(self.textCursor().position())
+        self.edit_block_cursor.beginEditBlock()
+        try:
+            yield
+        finally:
+            self.edit_block_cursor.endEditBlock()
+
+    @contextmanager
+    def join_edit_block(self):
+        self.edit_block_cursor.setPosition(self.textCursor().position())
+        self.edit_block_cursor.joinPreviousEditBlock()
+        try:
+            yield
+        finally:
+            self.edit_block_cursor.endEditBlock()
+
     def set_cell_text(self, cell_idx, txt):
-        cell = self.out_cell(cell_idx)
-        cursor = cell.firstCursorPosition()
-        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
-        cursor.insertText(txt)
-        self.has_image[self.execute_cell_idx] = False
+        with self.join_edit_block():
+            cell = self.out_cell(cell_idx)
+            cursor = cell.firstCursorPosition()
+            cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+            cursor.insertText(txt)
+            self.has_image[self.execute_cell_idx] = False
 
-    @join_edit_block
     def set_cell_img(self, cell_idx, img, format, name):
-        # name should be unique to allow undo/redo
-        cell = self.out_cell(cell_idx)
-        cursor = cell.firstCursorPosition()
-        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+        with self.join_edit_block():
+            # name should be unique to allow undo/redo
+            cell = self.out_cell(cell_idx)
+            cursor = cell.firstCursorPosition()
+            cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
 
-        image = QImage()
-        image.loadFromData(img, format.upper())
-        self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
-        image_format = QTextImageFormat()
-        image_format.setName(name)
-        image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
-        cursor.insertImage(image_format)
-        self.has_image[self.execute_cell_idx] = True
+            image = QImage()
+            image.loadFromData(img, format.upper())
+            self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
+            image_format = QTextImageFormat()
+            image_format.setName(name)
+            image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
+            cursor.insertImage(image_format)
+            self.has_image[self.execute_cell_idx] = True
 
     @staticmethod
     def _out_cell_format(color):
@@ -252,30 +257,30 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         return cell_format
 
-    @join_edit_block
     def set_cell_active(self, cell_idx, active):
-        self.code_cell(cell_idx).setFormat(self._code_cell_format(active))
+        with self.join_edit_block():
+            self.code_cell(cell_idx).setFormat(self._code_cell_format(active))
 
-    @join_edit_block
     def set_cell_done(self, cell_idx):
-        self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['done_color']))
+        with self.join_edit_block():
+            self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['done_color']))
 
-    @join_edit_block
     def set_cell_pending(self, cell_idx):
-        self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['pending_color']))
+        with self.join_edit_block():
+            self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['pending_color']))
 
-    @join_edit_block
     def set_cell_executing(self, cell_idx):
-        self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['executing_color']))
-        self.set_cell_text(cell_idx, '')
+        with self.join_edit_block():
+            self.out_cell(cell_idx).setFormat(self._out_cell_format(theme['executing_color']))
+            self.set_cell_text(cell_idx, '')
 
-    @join_edit_block
     def set_cell_error(self, cell_idx, txt, tooltip=None):
-        cell = self.out_cell(cell_idx)
-        cell_format = self._out_cell_format(theme['error_color'])
-        cell_format.setToolTip(tooltip)
-        cell.setFormat(cell_format)
-        self.set_cell_text(cell_idx, txt) # after setting tooltip
+        with self.join_edit_block():
+            cell = self.out_cell(cell_idx)
+            cell_format = self._out_cell_format(theme['error_color'])
+            cell_format.setToolTip(tooltip)
+            cell.setFormat(cell_format)
+            self.set_cell_text(cell_idx, txt) # after setting tooltip
 
     def _execute(self, cell_idx, code=None):
         if code is None:
@@ -443,12 +448,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e) # paste handled by insertFromMimeData
 
-        self.edit_block_cursor.setPosition(self.textCursor().position())
-        self.edit_block_cursor.beginEditBlock()
-        self.keyPressEvent2(e)
-        self.edit_block_cursor.endEditBlock()
-
-    def keyPressEvent2(self, e):
         cursor = self.textCursor()
         if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
             if cursor.hasSelection():
@@ -470,7 +469,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         col = cell.column()
         cell_idx = cell.row()
         # allow navigation keys to propegate, restrict navigation to one column
-        if e.key() in [Qt.Key_Up, Qt.Key_Down]:
+        # don't start edit block for navigation keys - causing navigation to be inconsistent for multline code
+        if e.key() in [Qt.Key_Up, Qt.Key_Down, Qt.Key_End, Qt.Key_Home]:
             return super().keyPressEvent(e)
         elif e.key() == Qt.Key_Left:
             if cell.firstCursorPosition().position() == cursor.position() or mrow_num > 1:
@@ -490,11 +490,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return super().keyPressEvent(e)
         if col == 1 or mcol_num > 1:
             return
-
-        if e.key() == Qt.Key_Return:
-            if e.modifiers() & Qt.ShiftModifier:
-                pass # shift+enter always adds a new line
-            else:
+        with self.edit_block():
+            if e.key() == Qt.Key_Return and not (e.modifiers() & Qt.ShiftModifier):
+                # shift+enter always adds a new line
                 cursor.setPosition(self.code_cell(cell_idx).firstCursorPosition().position(), QTextCursor.KeepAnchor)
                 is_complete, indent = self.is_complete(cursor.selection().toPlainText())
                 if is_complete == 'incomplete':
@@ -514,57 +512,57 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     else:
                         self.execute(cell_idx)
                 return
-        elif e.key() == Qt.Key_Backspace:
-            if mrow_num > 1:
-                if mrow == 0 and mrow_num == self.table.rows():
-                    self.insert_cell(0)
-                    mrow += 1
-                self.table.removeRows(mrow, mrow_num)
-                return
-            if cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position():
-                if cell_idx > 0:
-                    code = self.get_cell_code(cell_idx)
-                    self.table.removeRows(cell_idx, 1)
-                    cursor = self.code_cell(cell_idx-1).lastCursorPosition()
+            elif e.key() == Qt.Key_Backspace:
+                if mrow_num > 1:
+                    if mrow == 0 and mrow_num == self.table.rows():
+                        self.insert_cell(0)
+                        mrow += 1
+                    self.table.removeRows(mrow, mrow_num)
+                    return
+                if cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position():
+                    if cell_idx > 0:
+                        code = self.get_cell_code(cell_idx)
+                        self.table.removeRows(cell_idx, 1)
+                        cursor = self.code_cell(cell_idx-1).lastCursorPosition()
+                        pos = cursor.position()
+                        cursor.insertText(code)
+                        cursor.setPosition(pos)
+                        self.setTextCursor(cursor)
+                        self.execute(cell_idx-1)
+                    return
+            elif e.key() == Qt.Key_Delete:
+                if mrow_num > 1:
+                    if mrow == 0 and mrow_num == self.table.rows():
+                        self.insert_cell(0)
+                        mrow += 1
+                    self.table.removeRows(mrow, mrow_num)
+                    return
+                if (not cursor.hasSelection() and
+                        cursor.position() == self.code_cell(cell_idx).lastCursorPosition().position() and
+                        cell_idx+1 < self.table.rows()):
                     pos = cursor.position()
-                    cursor.insertText(code)
+                    cursor.insertText(self.get_cell_code(cell_idx+1))
                     cursor.setPosition(pos)
                     self.setTextCursor(cursor)
-                    self.execute(cell_idx-1)
-                return
-        elif e.key() == Qt.Key_Delete:
-            if mrow_num > 1:
-                if mrow == 0 and mrow_num == self.table.rows():
-                    self.insert_cell(0)
-                    mrow += 1
-                self.table.removeRows(mrow, mrow_num)
-                return
-            if (not cursor.hasSelection() and
-                cursor.position() == self.code_cell(cell_idx).lastCursorPosition().position() and
-                cell_idx+1 < self.table.rows()):
-               pos = cursor.position()
-               cursor.insertText(self.get_cell_code(cell_idx+1))
-               cursor.setPosition(pos)
-               self.setTextCursor(cursor)
-               self.table.removeRows(cell_idx+1, 1)
-               self.execute(cell_idx)
-               return
-        elif e.key() == Qt.Key_Tab:
-            if not cursor.hasSelection():
-                check_cursor = QTextCursor(cursor)
-                check_cursor.movePosition(QTextCursor.Left, QTextCursor.KeepAnchor)
-                if check_cursor.hasSelection() and not check_cursor.selectedText().isspace():
-                    self.complete_cell_idx = cell_idx
-                    self.complete_pos_in_cell = self.pos_in_cell(cell_idx, cursor)
-                    self.complete_code = self.get_cell_code(cell_idx)
-                    self.complete_msg_id = self.kernel_client.complete(code=self.complete_code, cursor_pos=self.complete_pos_in_cell)
+                    self.table.removeRows(cell_idx+1, 1)
+                    self.execute(cell_idx)
                     return
+            elif e.key() == Qt.Key_Tab:
+                if not cursor.hasSelection():
+                    check_cursor = QTextCursor(cursor)
+                    check_cursor.movePosition(QTextCursor.Left, QTextCursor.KeepAnchor)
+                    if check_cursor.hasSelection() and not check_cursor.selectedText().isspace():
+                        self.complete_cell_idx = cell_idx
+                        self.complete_pos_in_cell = self.pos_in_cell(cell_idx, cursor)
+                        self.complete_code = self.get_cell_code(cell_idx)
+                        self.complete_msg_id = self.kernel_client.complete(code=self.complete_code, cursor_pos=self.complete_pos_in_cell)
+                        return
 
-        old_code = self.get_cell_code(cell_idx)
-        super().keyPressEvent(e)
-        code = self.get_cell_code(cell_idx)
-        if code != old_code:
-            self.execute(cell_idx, code)
+            old_code = self.get_cell_code(cell_idx)
+            super().keyPressEvent(e)
+            code = self.get_cell_code(cell_idx)
+            if code != old_code:
+                self.execute(cell_idx, code)
 
     def insertFromMimeData(self, source: QMimeData):
         lines = source.text().splitlines()
