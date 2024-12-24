@@ -17,6 +17,7 @@ from qtconsole.manager import QtKernelManager
 from qtconsole.completion_widget import CompletionWidget
 
 from IPython.core.inputtransformer2 import TransformerManager
+from IPython.lib.latextools import latex_to_png
 
 from ansi2html import Ansi2HTMLConverter
 
@@ -331,6 +332,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif 'image/jpeg' in data:
             image_data = b64decode(data['image/jpeg'].encode('ascii'))
             self.set_cell_img(self.execute_cell_idx, image_data, 'JPG', msg_id)
+        elif 'text/latex' in data:
+            data['text/latex'] = data['text/latex'].replace('$\\displaystyle', '$')
+            image_data = latex_to_png(data['text/latex'], wrap=False, backend='matplotlib')
+            if image_data is None:
+                image_data = latex_to_png(data['text/latex'], wrap=False, backend='dvipng')
+            self.set_cell_img(self.execute_cell_idx, image_data, 'PNG', msg_id)
         elif 'text/plain' in data:
             if not self.has_image[self.execute_cell_idx]:
                 self.set_cell_text(self.execute_cell_idx, data['text/plain'])
