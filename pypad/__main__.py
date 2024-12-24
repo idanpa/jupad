@@ -76,7 +76,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         font.setPixelSize(16)
         self.setFont(font)
         font_metrics = QFontMetrics(font)
-        self.setTabStopDistance(4 * font_metrics.width(' '))
+        self.char_width = font_metrics.width(' ')
+        self.setTabStopDistance(4 * self.char_width)
 
         Highlighter(self)
 
@@ -89,10 +90,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         table_format.setMargin(0)
         table_format.setWidth(QTextLength(QTextLength.PercentageLength, 100))
         table_format.setColumnWidthConstraints([
-            QTextLength(QTextLength.PercentageLength, 50),
-            QTextLength(QTextLength.PercentageLength, 50)])
+            QTextLength(QTextLength.PercentageLength, 40),
+            QTextLength(QTextLength.PercentageLength, 60)])
         self.table = cursor.insertTable(1, 2, table_format)
 
+        self.in_undo_redo = False
         # if cell has execution result, this specifies the last execution count
         self.execution_count = [None]
         # if cell has an image
@@ -163,6 +165,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return get_table_cell_text(self.code_cell(cell_idx))
 
     def position_changed(self):
+        if self.in_undo_redo:
+            return # don't corrupt undo stack
         # fix selection to be within one column in table
         cursor = self.textCursor()
         if cursor.hasSelection():
@@ -248,9 +252,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         return cell_format
 
-    # @join_edit_block
+    @join_edit_block
     def set_cell_active(self, cell_idx, active):
-        return # todo: this is breaking the undo/redo stack
         self.code_cell(cell_idx).setFormat(self._code_cell_format(active))
 
     @join_edit_block
@@ -434,7 +437,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def keyPressEvent(self, e):
         # operations that always propegate:
         if e.key() in [Qt.Key_Z, Qt.Key_Y] and (e.modifiers() & Qt.ControlModifier):
-            return super().keyPressEvent(e)
+            self.in_undo_redo = True
+            super().keyPressEvent(e)
+            self.in_undo_redo = False
+            return
         elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e) # paste handled by insertFromMimeData
 
@@ -633,9 +639,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-
         self.setWindowTitle('pypad')
-        self.setGeometry(100, 100, 800, 600)
+        self.resize(1000, 600)
 
         self.pypad_text_edit = PyPadTextEdit(self)
         self.setCentralWidget(self.pypad_text_edit)
