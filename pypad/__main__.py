@@ -349,13 +349,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         if status == 'ok':
             self.set_cell_done(self.execute_cell_idx)
-            if self.execute_cell_idx+1 < self.table.rows():
-                self.execute_cell_idx = self.execute_cell_idx+1
-                self._execute(self.execute_cell_idx)
-            else:
-                self.execute_running = False
         else:
             self.execution_count[self.execute_cell_idx] = None
+        if self.execute_cell_idx+1 < self.table.rows():
+            self.execute_cell_idx = self.execute_cell_idx+1
+            self._execute(self.execute_cell_idx)
+        else:
             self.execute_running = False
 
     def _handle_complete_reply(self, msg):
