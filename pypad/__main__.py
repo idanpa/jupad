@@ -86,7 +86,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.char_width = font_metrics.width(' ')
         self.setTabStopDistance(4 * self.char_width)
 
-        Highlighter(self)
+        self.highlighter = Highlighter(self)
+        self.highlighter.set_style('vs')
 
         self.setFrameStyle(QFrame.Shape.NoFrame)
 
