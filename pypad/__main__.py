@@ -325,6 +325,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             cell.setFormat(cell_format)
             self.set_cell_text(cell_idx, txt) # after setting tooltip
 
+    def restart_kernel(self):
+        self.kernel_manager.restart_kernel()
+        self.execute(0)
+
     def _execute(self, cell_idx, code=None):
         if code is None:
             code = self.get_cell_code(cell_idx)
@@ -505,6 +509,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e) # paste handled by insertFromMimeData
+        elif e.key() == Qt.Key_R and (e.modifiers() & Qt.ControlModifier):
+            self.restart_kernel()
+            return
 
         cursor = self.textCursor()
         if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
