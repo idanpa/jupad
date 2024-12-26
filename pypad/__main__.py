@@ -206,6 +206,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
     def remove_cells(self, cell_idx, count):
+        if self.execute_running: # stop execution
+            self.execute_msg_id = ''
+            self.kernel_manager.interrupt_kernel()
+
         self.table.removeRows(cell_idx, count)
         self.execution_count[cell_idx:cell_idx+count] = []
         self.has_image[cell_idx:cell_idx+count] = []
