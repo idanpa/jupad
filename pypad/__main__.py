@@ -5,7 +5,7 @@ from base64 import b64decode
 from contextlib import contextmanager
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
-from PyQt6.QtCore import Qt, QRect, QMimeData, QEvent, QUrl
+from PyQt6.QtCore import Qt, QObject, QRect, QMimeData, QEvent, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QFont, QFontMetrics, QFontDatabase, QImage, \
     QPainter, QColor, QKeyEvent, \
     QTextCursor, QTextLength, QTextCharFormat, QTextFrameFormat, QTextBlockFormat, \
@@ -34,6 +34,26 @@ light_theme = {
 }
 theme = light_theme
 
+class LatexWorkerSignals(QObject):
+    # separate class as you must be QObject to have signals
+    result = pyqtSignal(int, str, bytes)
+
+class LatexWorker(QRunnable):
+    def __init__(self, cell_idx, latex):
+        super().__init__()
+        self.cell_idx = cell_idx
+        self.latex = latex
+        self.signals = LatexWorkerSignals()
+
+    @pyqtSlot()
+    def run(self):
+        latex = self.latex.replace('$\\displaystyle', '$')
+        image_data = latex_to_png(latex, wrap=False, backend='matplotlib')
+        if image_data is None:
+            image_data = latex_to_png(latex, wrap=False, backend='dvipng')
+        if image_data:
+            self.signals.result.emit(self.cell_idx, self.latex, image_data)
+
 class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
         # don't highlight output cells
@@ -48,14 +68,13 @@ class CompletionWidget_(CompletionWidget):
         super()._complete_current()
         self._text_edit.execute(self._text_edit.complete_cell_idx)
 
-def get_table_cell_text(cell: QTextTableCell):
-    cursor = cell.firstCursorPosition()
-    cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
-    return cursor.selection().toPlainText()
-
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent):
         super().__init__(parent)
+        self.recalculate_columns_timer = QTimer()
+        self.recalculate_columns_timer.setSingleShot(True)
+        self.recalculate_columns_timer.setInterval(500)
+        self.recalculate_columns_timer.timeout.connect(self.recalculate_columns)
 
         # so ctrl+z won't undo initialization:
         self.setUndoRedoEnabled(False)
@@ -87,6 +106,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count = [None]
         # if cell has an image
         self.has_image = [False]
+        # latex code of cell
+        self.latex = ['']
         self.setTextCursor(self.code_cell(0).firstCursorPosition())
 
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
@@ -128,6 +149,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.edit_block_cursor = self.textCursor()
 
+        self.thread_pool = QThreadPool()
+
+
     def is_complete(self, code):
         return self.transformer_manager.check_complete(code)
 
@@ -146,12 +170,23 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.table.insertRows(cell_idx, 1)
         self.execution_count.insert(cell_idx, None)
         self.has_image.insert(cell_idx, False)
+        self.latex.insert(cell_idx, '')
         self.set_cell_pending(cell_idx)
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
     def get_cell_code(self, cell_idx):
-        return get_table_cell_text(self.code_cell(cell_idx))
+        cell = self.code_cell(cell_idx)
+        cursor = cell.firstCursorPosition()
+        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+        return cursor.selection().toPlainText()
 
+    def get_cell_out(self, cell_idx):
+        cell = self.out_cell(cell_idx)
+        cursor = cell.firstCursorPosition()
+        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+        return cursor.selection().toPlainText()
+
+    @pyqtSlot()
     def position_changed(self):
         if self.in_undo_redo:
             return # don't corrupt undo stack
@@ -310,6 +345,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         for i in range(cell_idx+1, self.table.rows()):
             self.set_cell_pending(i)
 
+    @pyqtSlot(int, str, bytes)
+    def set_cell_latex_img(self, cell_idx, latex, img):
+        if self.latex[cell_idx] == latex:
+            self.set_cell_img(cell_idx, img, 'PNG', latex)
+
     def _handle_execute_result(self, msg):
         msg_id = msg['parent_header']['msg_id']
         self.log.debug(f'execute_result ({msg_id.split("_")[-1]})')
@@ -332,17 +372,19 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif 'image/jpeg' in data:
             image_data = b64decode(data['image/jpeg'].encode('ascii'))
             self.set_cell_img(self.execute_cell_idx, image_data, 'JPG', msg_id)
-        elif 'text/latex' in data:
-            data['text/latex'] = data['text/latex'].replace('$\\displaystyle', '$')
-            image_data = latex_to_png(data['text/latex'], wrap=False, backend='matplotlib')
-            if image_data is None:
-                image_data = latex_to_png(data['text/latex'], wrap=False, backend='dvipng')
-            self.set_cell_img(self.execute_cell_idx, image_data, 'PNG', msg_id)
         elif 'text/plain' in data:
             if not self.has_image[self.execute_cell_idx]:
                 self.set_cell_text(self.execute_cell_idx, data['text/plain'])
         else:
             print(f'unsupported type {data}')
+
+        if 'text/latex' in data:
+            self.latex[self.execute_cell_idx] = data['text/latex']
+            latex_worker = LatexWorker(self.execute_cell_idx, data['text/latex'])
+            latex_worker.signals.result.connect(self.set_cell_latex_img)
+            self.thread_pool.start(latex_worker)
+        else:
+            self.latex[self.execute_cell_idx] = ''
 
     def _handle_error(self, msg):
         msg_id = msg['parent_header']['msg_id']
@@ -363,6 +405,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count[self.execute_cell_idx] = content['execution_count']
         if status == 'ok':
             self.set_cell_done(self.execute_cell_idx)
+        else:
+            self.latex[self.execute_cell_idx] = ''
         if self.execute_cell_idx+1 < self.table.rows():
             self.execute_cell_idx = self.execute_cell_idx+1
             self._execute(self.execute_cell_idx)
@@ -458,7 +502,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor = self.textCursor()
         if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
             if cursor.hasSelection():
-                QApplication.instance().clipboard().setText(cursor.selection().toPlainText())
+                return super().keyPressEvent(e) # see createMimeDataFromSelection
             else:
                 self.log.debug('interrupt kernel: ctrl+c')
                 self.kernel_manager.interrupt_kernel()
@@ -570,6 +614,36 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             code = self.get_cell_code(cell_idx)
             if code != old_code:
                 self.execute(cell_idx, code)
+
+    def createMimeDataFromSelection(self) -> QMimeData:
+        mime_data = QMimeData()
+
+        cursor = self.textCursor()
+        mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
+        if mcol_num > 1:
+            # doesn't make much sense to copy multiple columns
+            mime_data.setText(cursor.selection().toPlainText())
+        elif mrow_num > 1 and mcol == 0:
+            # copy code
+            mime_data.setText(cursor.selection().toPlainText())
+        elif mrow_num > 1 and mcol == 1:
+            text = ''
+            for cell_idx in range(mrow, mrow+mrow_num):
+                if self.latex[cell_idx] != '':
+                    text += self.latex[cell_idx] + '\n'
+                else:
+                    text += self.get_cell_out(cell_idx) + '\n'
+            mime_data.setText(text)
+        else:
+            cell = self.table.cellAt(cursor)
+            if cell.isValid():
+                cell_idx = cell.row()
+                if cell.column() == 1 and self.latex[cell_idx] != '':
+                    mime_data.setText(self.latex[cell_idx])
+                else:
+                    mime_data.setText(cursor.selection().toPlainText())
+
+        return mime_data
 
     def insertFromMimeData(self, source: QMimeData):
         lines = source.text().splitlines()
