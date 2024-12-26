@@ -175,6 +175,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.set_cell_pending(cell_idx)
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
+    def remove_cells(self, cell_idx, count):
+        self.table.removeRows(cell_idx, count)
+        self.execution_count[cell_idx:cell_idx+count] = []
+        self.has_image[cell_idx:cell_idx+count] = []
+        self.latex[cell_idx:cell_idx+count] = []
+
     def get_cell_code(self, cell_idx):
         cell = self.code_cell(cell_idx)
         cursor = cell.firstCursorPosition()
@@ -569,12 +575,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     if mrow == 0 and mrow_num == self.table.rows():
                         self.insert_cell(0)
                         mrow += 1
-                    self.table.removeRows(mrow, mrow_num)
+                    self.remove_cells(mrow, mrow_num)
                     return
                 if cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position():
                     if cell_idx > 0:
                         code = self.get_cell_code(cell_idx)
-                        self.table.removeRows(cell_idx, 1)
+                        self.remove_cells(cell_idx, 1)
                         cursor = self.code_cell(cell_idx-1).lastCursorPosition()
                         pos = cursor.position()
                         cursor.insertText(code)
@@ -587,7 +593,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     if mrow == 0 and mrow_num == self.table.rows():
                         self.insert_cell(0)
                         mrow += 1
-                    self.table.removeRows(mrow, mrow_num)
+                    self.remove_cells(mrow, mrow_num)
                     return
                 if (not cursor.hasSelection() and
                         cursor.position() == self.code_cell(cell_idx).lastCursorPosition().position() and
@@ -596,7 +602,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     cursor.insertText(self.get_cell_code(cell_idx+1))
                     cursor.setPosition(pos)
                     self.setTextCursor(cursor)
-                    self.table.removeRows(cell_idx+1, 1)
+                    self.remove_cells(cell_idx+1, 1)
                     self.execute(cell_idx)
                     return
             elif e.key() == Qt.Key_Tab:
