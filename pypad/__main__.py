@@ -378,7 +378,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         for i, var_name in ((cell_idx-1, '_'), (cell_idx-2, '__'), (cell_idx-3, '___')):
             if i >= 0 and self.execution_count[i] is not None:
                 prep_code += f'{var_name} = Out.get({self.execution_count[i]}, None)\n'
-        self.kernel_client.execute(prep_code, stop_on_error=False)
+        self.kernel_client.execute(prep_code, silent=True, stop_on_error=False)
         # don't stop on error, we interrupt kernel and execute a new cell immediately after, otherwise might get aborted
         self.execute_msg_id = self.kernel_client.execute(code, stop_on_error=False)
         self.log.debug(f'execute [{cell_idx}] ({self.execute_msg_id.split("_")[-1]}): {code}')
