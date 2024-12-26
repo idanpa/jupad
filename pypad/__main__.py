@@ -295,7 +295,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_client.execute(prep_code, stop_on_error=False)
         # don't stop on error, we interrupt kernel and execute a new cell immediately after, otherwise might get aborted
         self.execute_msg_id = self.kernel_client.execute(code, stop_on_error=False)
-        self.log.debug(f'execute [{cell_idx}] ({self.execute_msg_id.split('_')[-1]}): {code}')
+        self.log.debug(f'execute [{cell_idx}] ({self.execute_msg_id.split("_")[-1]}): {code}')
 
     def execute(self, cell_idx, code=None):
         if self.execute_running:
@@ -312,14 +312,14 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
     def _handle_execute_result(self, msg):
         msg_id = msg['parent_header']['msg_id']
-        self.log.debug(f'execute_result ({msg_id.split('_')[-1]})')
+        self.log.debug(f'execute_result ({msg_id.split("_")[-1]})')
         if msg_id != self.execute_msg_id:
             return
         self._handle_execute_result_or_display_data(msg['content'], msg_id)
 
     def _handle_display_data(self, msg):
         msg_id = msg['parent_header']['msg_id']
-        self.log.debug(f'display_data ({msg_id.split('_')[-1]})')
+        self.log.debug(f'display_data ({msg_id.split("_")[-1]})')
         if msg_id != self.execute_msg_id:
             return
         self._handle_execute_result_or_display_data(msg['content'], msg_id)
@@ -348,7 +348,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         msg_id = msg['parent_header']['msg_id']
         content = msg['content']
         ename = content['ename']
-        self.log.debug(f'error ({msg_id.split('_')[-1]}): {ename}')
+        self.log.debug(f'error ({msg_id.split("_")[-1]}): {ename}')
         if msg_id != self.execute_msg_id:
             return
         self.set_cell_error(self.execute_cell_idx, ename, self.html_converter.convert(''.join(content['traceback'])))
@@ -357,7 +357,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         msg_id = msg['parent_header']['msg_id']
         content = msg['content']
         status = content['status']
-        self.log.debug(f'execute_reply ({msg_id.split('_')[-1]}): {status}')
+        self.log.debug(f'execute_reply ({msg_id.split("_")[-1]}): {status}')
         if msg_id != self.execute_msg_id:
             return
         self.execution_count[self.execute_cell_idx] = content['execution_count']
@@ -372,7 +372,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_complete_reply(self, msg):
         # code from qtconsole:
         msg_id = msg['parent_header']['msg_id']
-        self.log.debug(f'complete_reply ({msg_id.split('_')[-1]})')
+        self.log.debug(f'complete_reply ({msg_id.split("_")[-1]})')
         cursor = self.textCursor()
         if  (msg_id == self.complete_msg_id and
              self.pos_in_cell(self.complete_cell_idx, cursor) == self.complete_pos_in_cell and
