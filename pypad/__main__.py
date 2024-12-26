@@ -31,6 +31,7 @@ light_theme = {
     'error_color': QColor('#f4bdbd'),
     'inactive_color': QColor('#ffffff'),
     'active_color': QColor('#f4f4f4'),
+    'splash_color': QColor('#a0a0a0'),
 }
 theme = light_theme
 
@@ -103,6 +104,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             QTextLength(QTextLength.PercentageLength, 60)])
         self.table = cursor.insertTable(1, 2, table_format)
 
+        self.execute_msg_id = ''
         self.in_undo_redo = False
         # last execution count of each cell
         self.execution_count = [None]
@@ -125,6 +127,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_manager = kernel_manager
         self.kernel_client = kernel_client
 
+        self.splash_visible = False
         kernel_client.kernel_info()
 
         self.execute_running = False
@@ -152,6 +155,33 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.thread_pool = QThreadPool()
 
+    def set_splash(self):
+        if self.splash_visible:
+            return
+        self.splash_visible = True
+
+        cell_format = QTextTableCellFormat()
+        cell_format.setBorder(0)
+        self.code_cell(0).setFormat(cell_format)
+        self.out_cell(0).setFormat(cell_format)
+
+        cursor = self.table.lastCursorPosition()
+        cursor.movePosition(QTextCursor.Right)
+        block_format = QTextBlockFormat()
+        block_format.setAlignment(Qt.AlignCenter)
+        cursor.setBlockFormat(block_format)
+        format = QTextCharFormat()
+        format.setForeground(theme['splash_color'])
+        cursor.insertText('\n\npypad - Python Notepad\n\n'
+                          + (self.kernel_info if self.kernel_info else '') + '\n\n'
+                          'Restart Kernel [Ctrl]+[R]\n', format)
+
+    def hide_splash(self):
+        cursor = self.table.lastCursorPosition()
+        cursor.movePosition(QTextCursor.Right)
+        cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+        self.splash_visible = False
 
     def is_complete(self, code):
         return self.transformer_manager.check_complete(code)
@@ -213,6 +243,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif cursor.position() > self.table.lastCursorPosition().position():
             cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position())
         self.setTextCursor(cursor)
+
+        if self.table.rows() == 1:
+            if self.get_cell_code(0) == '':
+                self.set_splash()
+                return
+        if self.splash_visible:
+            self.hide_splash()
 
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         cell = self.table.cellAt(cursor)
@@ -332,6 +369,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _execute(self, cell_idx, code=None):
         if code is None:
             code = self.get_cell_code(cell_idx)
+        if cell_idx == 0 and code == '' and self.table.rows() == 1:
+            self.set_cell_text(cell_idx, '')
+            return # keep splash clean
         self.set_cell_executing(cell_idx)
         # set '_', '__', '___' to hold the previous cells output:
         prep_code = ''
@@ -469,7 +509,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_kernel_info_reply(self, msg):
         self.log.debug(f'kernel_info_reply')
         language_info = msg['content']['language_info']
-        self.kernel_info = language_info['name'] + language_info['version']
+        self.kernel_info = language_info['name'] + ' ' + language_info['version']
+        self.set_splash()
         self.setUndoRedoEnabled(True)
         self.parent().show()
 
