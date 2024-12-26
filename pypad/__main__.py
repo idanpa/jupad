@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import Qt, QObject, QRect, QMimeData, QEvent, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QFont, QFontMetrics, QFontDatabase, QImage, \
-    QPainter, QColor, QKeyEvent, \
+    QPainter, QColor, QKeyEvent, QResizeEvent, \
     QTextCursor, QTextLength, QTextCharFormat, QTextFrameFormat, QTextBlockFormat, \
     QTextDocument, QTextImageFormat, QTextTableCell, QTextTableFormat, QTextTableCellFormat
 
@@ -84,6 +84,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.setFont(font)
         font_metrics = QFontMetrics(font)
         self.char_width = font_metrics.width(' ')
+        self.char_height = font_metrics.height()
         self.setTabStopDistance(4 * self.char_width)
 
         self.highlighter = Highlighter(self)
@@ -115,7 +116,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.cursorPositionChanged.connect(self.position_changed)
 
-        os.environ['COLUMNS'] = '120'
         kernel_manager = QtKernelManager(kernel_name='python3')
         kernel_manager.start_kernel()
 
@@ -665,6 +665,18 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     Qt.KeyboardModifier.NoModifier, '\r', False, 0))
             self.textCursor().insertText(lines.pop())
 
+    @pyqtSlot()
+    def recalculate_columns(self):
+        table_format = self.table.format()
+        width = self.viewport().width()*table_format.columnWidthConstraints()[1].rawValue()/100
+        padding = 10
+        columns = int((width-padding) // self.char_width)
+        lines = int((self.viewport().height()-padding) // self.char_height)
+        self.kernel_client.execute(f'import os\nos.environ["COLUMNS"] = "{columns}"\nos.environ["LINES"] = "{lines}"', silent=True, stop_on_error=False)
+
+        # new pictures would use the new width
+        self.execute(0)
+
     def paintEvent(self, event):
         painter = QPainter(self.viewport())
         rect = self.viewport().rect()
@@ -687,6 +699,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             QTextLength(QTextLength.PercentageLength, divider_precentage),
             QTextLength(QTextLength.PercentageLength, 100 - divider_precentage)])
         self.table.setFormat(table_format)
+        self.recalculate_columns_timer.start()
 
     def get_divider_x(self):
         table_format = self.table.format()
@@ -725,10 +738,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('pypad')
-        self.resize(1000, 600)
+        self.resize(1100, 600)
 
         self.pypad_text_edit = PyPadTextEdit(self)
         self.setCentralWidget(self.pypad_text_edit)
+
+    def resizeEvent(self, e: QResizeEvent):
+        # QTextEdit's resizeEvent fires also upon text overflow in cells
+        # no nice way to detect end of resize, use timer
+        self.pypad_text_edit.recalculate_columns_timer.start()
+        return super().resizeEvent(e)
 
 def main():
     app = QApplication(sys.argv)
