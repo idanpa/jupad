@@ -1,15 +1,17 @@
 import os
 import sys
+import io
 import logging
 from base64 import b64decode
 from contextlib import contextmanager
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
-from PyQt6.QtCore import Qt, QObject, QRect, QMimeData, QEvent, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal
-from PyQt6.QtGui import QFont, QFontMetrics, QFontDatabase, QImage, \
-    QPainter, QColor, QKeyEvent, QResizeEvent, \
-    QTextCursor, QTextLength, QTextCharFormat, QTextFrameFormat, QTextBlockFormat, \
-    QTextDocument, QTextImageFormat, QTextTableCell, QTextTableFormat, QTextTableCellFormat
+from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl,
+                          QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
+from PyQt6.QtGui import (QFont, QFontMetrics, QFontDatabase, QImage,
+    QPainter, QColor, QKeyEvent, QResizeEvent, QCloseEvent,
+    QTextCursor, QTextLength, QTextCharFormat, QTextFrameFormat, QTextBlockFormat,
+    QTextDocument, QTextImageFormat, QTextTableCell, QTextTableFormat, QTextTableCellFormat)
 
 from qtconsole.pygments_highlighter import PygmentsHighlighter
 from qtconsole.base_frontend_mixin import BaseFrontendMixin
@@ -72,10 +74,16 @@ class CompletionWidget_(CompletionWidget):
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent):
         super().__init__(parent)
+
         self.recalculate_columns_timer = QTimer()
         self.recalculate_columns_timer.setSingleShot(True)
         self.recalculate_columns_timer.setInterval(500)
         self.recalculate_columns_timer.timeout.connect(self.recalculate_columns)
+
+        self.save_timer = QTimer()
+        self.save_timer.setSingleShot(True)
+        self.save_timer.setInterval(5000)
+        self.save_timer.timeout.connect(self.save_file)
 
         # so ctrl+z won't undo initialization:
         self.setUndoRedoEnabled(False)
@@ -128,6 +136,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_client = kernel_client
 
         self.splash_visible = False
+        self.kernel_info = ''
         kernel_client.kernel_info()
 
         self.execute_running = False
@@ -173,7 +182,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         format = QTextCharFormat()
         format.setForeground(theme['splash_color'])
         cursor.insertText('\n\npypad - Python Notepad\n\n'
-                          + (self.kernel_info if self.kernel_info else '') + '\n\n'
+                          + self.kernel_info + '\n\n'
                           'Restart Kernel [Ctrl]+[R]\n', format)
 
     def hide_splash(self):
@@ -431,7 +440,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             if not self.has_image[self.execute_cell_idx]:
                 self.set_cell_text(self.execute_cell_idx, data['text/plain'])
         else:
-            print(f'unsupported type {data}')
+            self.log.error(f'unsupported type {data}')
 
         if 'text/latex' in data:
             self.latex[self.execute_cell_idx] = data['text/latex']
@@ -515,6 +524,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         language_info = msg['content']['language_info']
         self.kernel_info = language_info['name'] + ' ' + language_info['version']
         self.set_splash()
+
+        self.open_file()
+        self.load_file()
+
         self.setUndoRedoEnabled(True)
         self.parent().show()
 
@@ -673,6 +686,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             code = self.get_cell_code(cell_idx)
             if code != old_code:
                 self.execute(cell_idx, code)
+                self.save_timer.start()
 
     def createMimeDataFromSelection(self) -> QMimeData:
         mime_data = QMimeData()
@@ -786,6 +800,57 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         else:
             super().mouseReleaseEvent(event)
 
+    def open_file(self):
+        try:
+            if os.name == 'nt':
+                profile_folder = os.environ.get('USERPROFILE')
+            else:
+                profile_folder = os.environ.get('HOME')
+            if not profile_folder:
+                profile_folder = os.getcwd()
+            profile_folder = os.path.join(profile_folder, '.pypad')
+            os.makedirs(profile_folder, exist_ok=True)
+
+            file_name = 'pypad'
+            self.file = open(os.path.join(profile_folder, file_name +'.py'), 'a+')
+            self.log.debug(f'open_file: {self.file.name}')
+        except Exception as e:
+            self.log.error(f'file open error: {e}')
+            self.file = io.StringIO()
+
+    def close_file(self):
+        self.file.close()
+
+    @pyqtSlot()
+    def save_file(self):
+        self.log.debug('save_file')
+        try:
+            self.file.seek(0)
+            self.file.truncate()
+            for i in range(self.table.rows()):
+                self.file.write(self.get_cell_code(i))
+                self.file.write('\n')
+            self.file.flush()
+            os.fsync(self.file.fileno())
+        except Exception as e:
+            self.log.error(f'file save error: {e}')
+
+    def load_file(self):
+        self.log.debug('load_file')
+        try:
+            self.file.seek(0)
+            lines = self.file.readlines()
+            if lines[-1] == '': # ignore last new line
+                lines.pop()
+            if lines:
+                for line in lines[:-1]:
+                    self.textCursor().insertText(line.rstrip('\n'))
+                    self.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Return,
+                                                Qt.NoModifier, '\r', False, 0))
+                self.textCursor().insertText(lines[-1].rstrip('\n'))
+        except Exception as e:
+            self.log.error(f'file load error: {e}')
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -801,10 +866,15 @@ class MainWindow(QMainWindow):
         self.pypad_text_edit.recalculate_columns_timer.start()
         return super().resizeEvent(e)
 
+    def closeEvent(self, event: QCloseEvent):
+        self.pypad_text_edit.save_file()
+        self.pypad_text_edit.close_file()
+        return super().closeEvent(event)
+
 def main():
-    app = QApplication(sys.argv)
+    app = QApplication([])
     main_window = MainWindow()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 if __name__ == '__main__':
     main()
