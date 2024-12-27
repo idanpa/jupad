@@ -857,6 +857,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         except Exception as e:
             self.log.error(f'file load error: {e}')
 
+    def closeEvent(self, event: QCloseEvent):
+        self.save_file()
+        self.close_file()
+        self.kernel_manager.shutdown_kernel()
+        return super().closeEvent(event)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -873,8 +879,7 @@ class MainWindow(QMainWindow):
         return super().resizeEvent(e)
 
     def closeEvent(self, event: QCloseEvent):
-        self.pypad_text_edit.save_file()
-        self.pypad_text_edit.close_file()
+        self.pypad_text_edit.closeEvent(event)
         return super().closeEvent(event)
 
 def main():
