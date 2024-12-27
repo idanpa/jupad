@@ -808,6 +808,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
     def open_file(self):
         try:
+            file_path = os.environ['PYPAD_SCRIPT']
+            if file_path == '':
+                self.file = io.StringIO()
+            else:
+                self.file = open(os.environ['PYPAD_SCRIPT'], 'a+')
+            return
+        except KeyError:
+            pass
+        try:
             if os.name == 'nt':
                 profile_folder = os.environ.get('USERPROFILE')
             else:
