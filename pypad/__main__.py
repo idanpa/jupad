@@ -51,11 +51,14 @@ class LatexWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         latex = self.latex.replace('$\\displaystyle', '$')
-        image_data = latex_to_png(latex, wrap=False, backend='matplotlib')
-        if image_data is None:
-            image_data = latex_to_png(latex, wrap=False, backend='dvipng')
-        if image_data:
-            self.signals.result.emit(self.cell_idx, self.latex, image_data)
+        try:
+            image_data = latex_to_png(latex, wrap=False, backend='matplotlib')
+            if image_data is None:
+                image_data = latex_to_png(latex, wrap=False, backend='dvipng')
+            if image_data:
+                self.signals.result.emit(self.cell_idx, self.latex, image_data)
+        except Exception as e:
+            print(f'latex error: {e}')
 
 class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
@@ -309,19 +312,22 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
     def set_cell_img(self, cell_idx, img, format, name):
         with self.join_edit_block():
-            # name should be unique to allow undo/redo
-            cell = self.out_cell(cell_idx)
-            cursor = cell.firstCursorPosition()
-            cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+            try:
+                # name should be unique to allow undo/redo
+                cell = self.out_cell(cell_idx)
+                cursor = cell.firstCursorPosition()
+                cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
 
-            image = QImage()
-            image.loadFromData(img, format.upper())
-            self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
-            image_format = QTextImageFormat()
-            image_format.setName(name)
-            image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
-            cursor.insertImage(image_format)
-            self.has_image[self.execute_cell_idx] = True
+                image = QImage()
+                image.loadFromData(img, format.upper())
+                self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
+                image_format = QTextImageFormat()
+                image_format.setName(name)
+                image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
+                cursor.insertImage(image_format)
+                self.has_image[self.execute_cell_idx] = True
+            except Exception as e:
+                self.log.error(f'set image error: {e}')
 
     @staticmethod
     def _out_cell_format(color):
