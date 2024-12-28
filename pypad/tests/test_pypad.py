@@ -2,7 +2,7 @@
 import os
 import pytest
 
-from pypad.__main__ import MainWindow, PyPadTextEdit
+from pypad import MainWindow, PyPadTextEdit
 
 @pytest.fixture
 def pypad(qtbot):

@@ -5,7 +5,7 @@ import logging
 from base64 import b64decode
 from contextlib import contextmanager
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame
+from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
 from PyQt6.QtGui import (QFont, QFontMetrics, QFontDatabase, QImage,
@@ -890,12 +890,3 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent):
         self.pypad_text_edit.closeEvent(event)
         return super().closeEvent(event)
-
-def main():
-    app = QApplication([])
-    main_window = MainWindow()
-    sys.exit(app.exec())
-
-if __name__ == '__main__':
-    main()
-
