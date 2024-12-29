@@ -128,6 +128,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
 
         self.cursorPositionChanged.connect(self.position_changed)
+        self.textChanged.connect(self.text_changed)
 
         kernel_manager = QtKernelManager(kernel_name='python3')
         kernel_manager.start_kernel()
@@ -186,7 +187,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         format.setForeground(theme['splash_color'])
         cursor.insertText('\n\npypad - Python Notepad\n\n'
                           + self.kernel_info + '\n\n'
-                          'Restart Kernel [Ctrl]+[R]\n', format)
+                          'Restart Kernel [Ctrl]+R\n', format)
 
     def hide_splash(self):
         cursor = self.table.lastCursorPosition()
@@ -260,13 +261,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position())
         self.setTextCursor(cursor)
 
-        if self.table.rows() == 1:
-            if self.get_cell_code(0) == '':
-                self.set_splash()
-                return
-        if self.splash_visible:
-            self.hide_splash()
-
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         cell = self.table.cellAt(cursor)
         assert cell.isValid()
@@ -277,6 +271,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         for i in range(self.table.rows()):
             self.set_cell_active(i, i == cell_idx)
+
+    @pyqtSlot()
+    def text_changed(self):
+        if self.in_undo_redo:
+            return # don't corrupt undo stack
+        if self.table.rows() == 1 and self.get_cell_code(0) == '':
+            self.set_splash()
+        elif self.splash_visible:
+            self.hide_splash()
 
     def pos_in_cell(self, cell_idx, cursor):
         cell = self.table.cellAt(cursor)
@@ -392,6 +395,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.set_cell_text(cell_idx, '')
             return # keep splash clean
         self.set_cell_executing(cell_idx)
+        self.latex[cell_idx] = ''
         # set '_', '__', '___' to hold the previous cells output:
         prep_code = ''
         for i, var_name in ((cell_idx-1, '_'), (cell_idx-2, '__'), (cell_idx-3, '___')):
@@ -453,8 +457,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             latex_worker = LatexWorker(self.execute_cell_idx, data['text/latex'])
             latex_worker.signals.result.connect(self.set_cell_latex_img)
             self.thread_pool.start(latex_worker)
-        else:
-            self.latex[self.execute_cell_idx] = ''
 
     def _handle_error(self, msg):
         msg_id = msg['parent_header']['msg_id']
@@ -475,8 +477,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count[self.execute_cell_idx] = content['execution_count']
         if status == 'ok':
             self.set_cell_done(self.execute_cell_idx)
-        else:
-            self.latex[self.execute_cell_idx] = ''
         if self.execute_cell_idx+1 < self.table.rows():
             self.execute_cell_idx = self.execute_cell_idx+1
             self._execute(self.execute_cell_idx)
@@ -556,6 +556,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return
 
     def _handle_stream(self, msg):
+        msg_id = msg['parent_header'].get('msg_id', 'IGNORE_ME')
+        if msg_id != self.execute_msg_id:
+            return
         print(msg['content']['text'], end='')
 
     def _handle_kernel_restarted(self, died=True):
