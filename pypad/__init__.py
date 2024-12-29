@@ -623,7 +623,16 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if col == 1 or mcol_num > 1:
             return
         with self.edit_block():
-            if e.key() == Qt.Key_Return and not (e.modifiers() & Qt.ShiftModifier):
+            # if multiple cells selected, start with deleting them
+            if mrow_num > 1 and (e.key() in [Qt.Key_Return, Qt.Key_Backspace, Qt.Key_Delete] or e.text() != ''):
+                self.insert_cell(mrow)
+                cell_idx = mrow
+                self.remove_cells(mrow+1, mrow_num)
+                self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
+                if e.key() in [Qt.Key_Return, Qt.Key_Backspace, Qt.Key_Delete]:
+                    return
+                # else, add text and execute
+            elif e.key() == Qt.Key_Return and not (e.modifiers() & Qt.ShiftModifier):
                 # shift+enter always adds a new line
                 cursor.setPosition(self.code_cell(cell_idx).firstCursorPosition().position(), QTextCursor.KeepAnchor)
                 is_complete, indent = self.is_complete(cursor.selection().toPlainText())
@@ -645,12 +654,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                         self.execute(cell_idx)
                 return
             elif e.key() == Qt.Key_Backspace:
-                if mrow_num > 1:
-                    if mrow == 0 and mrow_num == self.table.rows():
-                        self.insert_cell(0)
-                        mrow += 1
-                    self.remove_cells(mrow, mrow_num)
-                    return
                 if cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position():
                     if cell_idx > 0:
                         code = self.get_cell_code(cell_idx)
@@ -663,12 +666,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                         self.execute(cell_idx-1)
                     return
             elif e.key() == Qt.Key_Delete:
-                if mrow_num > 1:
-                    if mrow == 0 and mrow_num == self.table.rows():
-                        self.insert_cell(0)
-                        mrow += 1
-                    self.remove_cells(mrow, mrow_num)
-                    return
                 if (not cursor.hasSelection() and
                         cursor.position() == self.code_cell(cell_idx).lastCursorPosition().position() and
                         cell_idx+1 < self.table.rows()):
