@@ -75,7 +75,7 @@ class CompletionWidget_(CompletionWidget):
         self._text_edit.execute(self._text_edit.complete_cell_idx)
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
-    def __init__(self, parent):
+    def __init__(self, parent, debug=False):
         super().__init__(parent)
 
         self.recalculate_columns_timer = QTimer()
@@ -151,7 +151,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.completion_widget = CompletionWidget_(self, 0)
 
         self.log = logging.getLogger('pypad')
-        self.log.setLevel(logging.DEBUG)
+        self.log.setLevel(logging.DEBUG if debug else logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(logging.DEBUG)
         self.log.addHandler(handler)
@@ -873,12 +873,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return super().closeEvent(event)
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.setWindowTitle('pypad')
         self.resize(1100, 600)
 
-        self.pypad_text_edit = PyPadTextEdit(self)
+        self.pypad_text_edit = PyPadTextEdit(self, **kwargs)
         self.setCentralWidget(self.pypad_text_edit)
 
     def resizeEvent(self, e: QResizeEvent):
