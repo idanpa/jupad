@@ -153,6 +153,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log = logging.getLogger('pypad')
         self.log.setLevel(logging.DEBUG if debug else logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter('%(relativeCreated)d %(message)s'))
         handler.setLevel(logging.DEBUG)
         self.log.addHandler(handler)
 
@@ -250,15 +251,18 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 cell = self.table.cellAt(cursor.anchor())
                 if cell.isValid():
                     cursor.setPosition(self.table.cellAt(0, cell.column()).firstCursorPosition().position(), QTextCursor.KeepAnchor)
+                    self.setTextCursor(cursor)
             if cursor.position() > self.table.lastCursorPosition().position():
                 cell = self.table.cellAt(cursor.anchor())
                 if cell.isValid():
                     cursor.setPosition(self.table.cellAt(self.table.rows()-1, cell.column()).lastCursorPosition().position(), QTextCursor.KeepAnchor)
+                    self.setTextCursor(cursor)
         elif cursor.position() < self.table.firstCursorPosition().position():
             cursor.setPosition(self.table.firstCursorPosition().position())
+            self.setTextCursor(cursor)
         elif cursor.position() > self.table.lastCursorPosition().position():
             cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position())
-        self.setTextCursor(cursor)
+            self.setTextCursor(cursor)
 
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         cell = self.table.cellAt(cursor)
