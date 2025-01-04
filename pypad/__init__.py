@@ -6,7 +6,7 @@ from base64 import b64decode
 from contextlib import contextmanager
 
 from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame
-from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl,
+from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl, QSize,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
 from PyQt6.QtGui import (QFont, QFontMetrics, QFontDatabase, QImage,
     QPainter, QColor, QKeyEvent, QResizeEvent, QCloseEvent,
@@ -885,14 +885,15 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle('pypad')
         self.resize(1100, 600)
-
         self.pypad_text_edit = PyPadTextEdit(self, **kwargs)
         self.setCentralWidget(self.pypad_text_edit)
 
     def resizeEvent(self, e: QResizeEvent):
         # QTextEdit's resizeEvent fires also upon text overflow in cells
         # no nice way to detect end of resize, use timer
-        self.pypad_text_edit.recalculate_columns_timer.start()
+        # only if changed and not the initial resize (from -1,-1)
+        if e.size() != e.oldSize() and e.oldSize() != QSize(-1, -1):
+            self.pypad_text_edit.recalculate_columns_timer.start()
         return super().resizeEvent(e)
 
     def closeEvent(self, event: QCloseEvent):
