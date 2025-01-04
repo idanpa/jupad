@@ -695,7 +695,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
     def createMimeDataFromSelection(self) -> QMimeData:
         mime_data = QMimeData()
-
+        # '\u2028'=newline, '\n'=new cell
         cursor = self.textCursor()
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         if mcol_num > 1:
@@ -703,8 +703,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             mime_data.setText(cursor.selection().toPlainText())
         elif mrow_num > 1 and mcol == 0:
             # copy code
-            mime_data.setText(cursor.selection().toPlainText())
+            text = ''
+            for cell_idx in range(mrow, mrow+mrow_num):
+                text += self.get_cell_code(cell_idx).replace('\n', '\u2028') + '\n'
+            mime_data.setText(text)
         elif mrow_num > 1 and mcol == 1:
+            # copy output
             text = ''
             for cell_idx in range(mrow, mrow+mrow_num):
                 if self.latex[cell_idx] != '':
@@ -713,18 +717,20 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     text += self.get_cell_out(cell_idx) + '\n'
             mime_data.setText(text)
         else:
+            # copy within single cell
             cell = self.table.cellAt(cursor)
             if cell.isValid():
                 cell_idx = cell.row()
                 if cell.column() == 1 and self.latex[cell_idx] != '':
                     mime_data.setText(self.latex[cell_idx])
                 else:
-                    mime_data.setText(cursor.selection().toPlainText())
+                    mime_data.setText(cursor.selection().toPlainText().replace('\n', '\u2028'))
 
         return mime_data
 
     def insertFromMimeData(self, source: QMimeData):
-        lines = source.text().splitlines()
+        # \u2028=newline, \n=new cell
+        lines = source.text().split('\n')
         lines.reverse()
         cursor = self.textCursor()
         cursor.insertText(lines.pop())
@@ -732,6 +738,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if cell.isValid():
             self.execute(cell.row())
         while lines:
+            # send keyEvent to make sure splitted propertly into cells
             self.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Return,
                     Qt.KeyboardModifier.NoModifier, '\r', False, 0))
             self.textCursor().insertText(lines.pop())
@@ -842,7 +849,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.file.seek(0)
             self.file.truncate()
             for i in range(self.table.rows()):
-                self.file.write(self.get_cell_code(i))
+                # '\u2028'=newline, '\n'=new cell
+                self.file.write(self.get_cell_code(i).replace('\n', '\u2028'))
                 self.file.write('\n')
             self.file.flush()
             os.fsync(self.file.fileno())
@@ -853,17 +861,18 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug('load_file')
         try:
             self.file.seek(0)
-            lines = self.file.readlines()
+            lines = self.file.read().split('\n')
             if lines[-1] == '': # ignore last new line
                 lines.pop()
             if lines:
                 for line in lines[:-1]:
+                    # send keyEvent to make sure splitted propertly into cells
                     self.textCursor().insertText(line.rstrip('\n'))
                     self.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Return,
                                                 Qt.NoModifier, '\r', False, 0))
                 self.textCursor().insertText(lines[-1].rstrip('\n'))
         except Exception as e:
-            self.log.error(f'file load error: {e}')
+            self.log.exception(f'file load error')
 
     def closeEvent(self, event: QCloseEvent):
         self.save_file()
