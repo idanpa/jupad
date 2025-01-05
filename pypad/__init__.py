@@ -562,7 +562,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         msg_id = msg['parent_header'].get('msg_id', 'IGNORE_ME')
         if msg_id != self.execute_msg_id:
             return
-        print(msg['content']['text'], end='')
+        self.append_text(self.execute_cell_idx, msg['content']['text'])
 
     def _handle_kernel_restarted(self, died=True):
         self.log.debug(f'kernel_restarted')
