@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl, QSize,
+                          QVariantAnimation, QEasingCurve,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
 from PyQt6.QtGui import (QFont, QFontMetrics, QFontDatabase, QImage,
     QPainter, QColor, QKeyEvent, QResizeEvent, QCloseEvent,
@@ -36,6 +37,20 @@ light_theme = {
     'splash_color': QColor('#a0a0a0'),
 }
 theme = light_theme
+
+class AnimateExecutingCell(QVariantAnimation):
+    def __init__(self, pypad):
+        super().__init__()
+        self.pypad = pypad
+        self.setLoopCount(-1)
+        self.setDuration(2000)
+        self.setEasingCurve(QEasingCurve.InOutSine)
+        self.setKeyValues([(0.0, theme['executing_color']), (0.5, theme['out_background']), (1.0, theme['executing_color'])])
+
+    def updateCurrentValue(self, value):
+        # this is also called upon construction, update only if execute running
+        if self.pypad.execute_running:
+            self.pypad.set_cell_color(self.pypad.execute_cell_idx, value)
 
 class LatexWorkerSignals(QObject):
     # separate class as you must be QObject to have signals
@@ -103,6 +118,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.setFrameStyle(QFrame.Shape.NoFrame)
 
+        self.edit_block_cursor = self.textCursor()
         cursor = self.textCursor()
         table_format = QTextTableFormat()
         table_format.setBorder(0)
@@ -122,7 +138,14 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.has_image = [False]
         # latex code of cell
         self.latex = ['']
-        self.setTextCursor(self.code_cell(0).firstCursorPosition())
+        self.execute_running = False
+        self.execute_cell_idx = -1
+
+        # for setting cells format:
+        self.insert_cell(0)
+        self.remove_cells(1, 1)
+
+        self.executing_animation = AnimateExecutingCell(self)
 
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
 
@@ -141,9 +164,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.splash_visible = False
         self.kernel_info = ''
         kernel_client.kernel_info()
-
-        self.execute_running = False
-        self.execute_cell_idx = -1
 
         self.html_converter = Ansi2HTMLConverter()
 
@@ -164,8 +184,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.transformer_manager = TransformerManager()
 
-        self.edit_block_cursor = self.textCursor()
-
         self.thread_pool = QThreadPool()
 
     def set_splash(self):
@@ -173,10 +191,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         self.splash_visible = True
 
-        cell_format = QTextTableCellFormat()
-        cell_format.setBorder(0)
-        self.code_cell(0).setFormat(cell_format)
-        self.out_cell(0).setFormat(cell_format)
+        self.set_cell_color(0, theme['out_background'])
 
         cursor = self.table.lastCursorPosition()
         cursor.movePosition(QTextCursor.Right)
@@ -215,11 +230,31 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count.insert(cell_idx, None)
         self.has_image.insert(cell_idx, False)
         self.latex.insert(cell_idx, '')
-        self.set_cell_color(cell_idx, theme['pending_color'])
+
+        out_cell_format = QTextTableCellFormat()
+        out_cell_format.setLeftBorder(3)
+        out_cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        out_cell_format.setLeftBorderBrush(theme['pending_color'])
+        out_cell_format.setLeftPadding(4)
+        out_cell_format.setBottomBorder(1)
+        out_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        out_cell_format.setBottomBorderBrush(theme['separater_color'])
+        self.out_cell(cell_idx).setFormat(out_cell_format)
+
+        code_cell_format = QTextTableCellFormat()
+        code_cell_format.setLeftBorder(3)
+        code_cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        code_cell_format.setLeftBorderBrush(theme['inactive_color'])
+        code_cell_format.setBottomBorder(1)
+        code_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
+        code_cell_format.setBottomBorderBrush(theme['separater_color'])
+        self.code_cell(cell_idx).setFormat(code_cell_format)
+
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
     def remove_cells(self, cell_idx, count):
         if self.execute_running: # stop execution
+            self.executing_animation.stop()
             self.execute_msg_id = ''
             self.kernel_manager.interrupt_kernel()
 
@@ -340,40 +375,19 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             except Exception as e:
                 self.log.error(f'set image error: {e}')
 
-    @staticmethod
-    def _out_cell_format(color):
-        cell_format = QTextTableCellFormat()
-        cell_format.setLeftBorder(3)
-        cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        cell_format.setLeftBorderBrush(color)
-        cell_format.setLeftPadding(4)
-
-        cell_format.setBottomBorder(1)
-        cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        cell_format.setBottomBorderBrush(theme['separater_color'])
-
-        return cell_format
-
-    @staticmethod
-    def _code_cell_format(active):
-        cell_format = QTextTableCellFormat()
-        cell_format.setLeftBorder(3)
-        cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        cell_format.setLeftBorderBrush(theme['active_color'] if active else theme['inactive_color'])
-
-        cell_format.setBottomBorder(1)
-        cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        cell_format.setBottomBorderBrush(theme['separater_color'])
-
-        return cell_format
-
     def set_cell_active(self, cell_idx, active):
         with self.join_edit_block():
-            self.code_cell(cell_idx).setFormat(self._code_cell_format(active))
+            cell = self.code_cell(cell_idx)
+            cell_format = cell.format().toTableCellFormat()
+            cell_format.setLeftBorderBrush(theme['active_color'] if active else theme['inactive_color'])
+            cell.setFormat(cell_format)
 
     def set_cell_color(self, cell_idx, color):
         with self.join_edit_block():
-            self.out_cell(cell_idx).setFormat(self._out_cell_format(color))
+            cell = self.out_cell(cell_idx)
+            cell_format = cell.format().toTableCellFormat()
+            cell_format.setLeftBorderBrush(color)
+            cell.setFormat(cell_format)
 
     def set_cell_tooltip(self, cell_idx, tooltip):
         with self.join_edit_block():
@@ -392,7 +406,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.clear_cell(cell_idx)
         if cell_idx == 0 and code == '' and self.table.rows() == 1:
             return # keep splash clean
-        self.set_cell_color(cell_idx, theme['executing_color'])
+        self.executing_animation.start()
 
         self.latex[cell_idx] = ''
         # set '_', '__', '___' to hold the previous cells output:
@@ -465,6 +479,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'error ({msg_id.split("_")[-1]}): {ename}')
         if msg_id != self.execute_msg_id:
             return
+        self.executing_animation.stop()
         self.set_cell_color(self.execute_cell_idx, theme['error_color'])
         self.set_cell_tooltip(self.execute_cell_idx, self.html_converter.convert(''.join(content['traceback'])))
         self.append_text(self.execute_cell_idx, ename)
@@ -477,8 +492,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if msg_id != self.execute_msg_id:
             return
         self.execution_count[self.execute_cell_idx] = content['execution_count']
+        # no guarantee that reply comes after error message
+        self.executing_animation.stop()
         if status == 'ok':
             self.set_cell_color(self.execute_cell_idx, theme['done_color'])
+        else:
+            self.set_cell_color(self.execute_cell_idx, theme['error_color'])
         if self.execute_cell_idx+1 < self.table.rows():
             self.execute_cell_idx = self.execute_cell_idx+1
             self._execute(self.execute_cell_idx)
