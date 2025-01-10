@@ -646,15 +646,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         with self.edit_block():
             # if multiple cells selected, start with deleting them
-            if mrow_num > 1 and (e.key() in [Qt.Key_Return, Qt.Key_Backspace, Qt.Key_Delete] or e.text() != ''):
+            if mrow_num > 1 and (e.key() in [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Delete] or e.text() != ''):
                 self.insert_cell(mrow)
                 cell_idx = mrow
                 self.remove_cells(mrow+1, mrow_num)
                 self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
-                if e.key() in [Qt.Key_Return, Qt.Key_Backspace, Qt.Key_Delete]:
+                if e.key() in [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Delete]:
                     return
                 # else, add text and execute
-            elif e.key() == Qt.Key_Return and not (e.modifiers() & Qt.ShiftModifier):
+            elif e.key() in [Qt.Key_Return, Qt.Key_Enter]  and not (e.modifiers() & Qt.ShiftModifier):
                 # shift+enter always adds a new line
                 cursor.setPosition(self.code_cell(cell_idx).firstCursorPosition().position(), QTextCursor.KeepAnchor)
                 is_complete, indent = self.is_complete(cursor.selection().toPlainText())
@@ -665,12 +665,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 else: # 'complete' or 'invalid', add a new cell below
                     self.insert_cell(cell_idx+1)
                     cursor.setPosition(self.code_cell(cell_idx).lastCursorPosition().position(), QTextCursor.KeepAnchor)
-                    code = cursor.selection().toPlainText()
+                    code_after_cursor = cursor.selection().toPlainText()
                     cursor.removeSelectedText()
                     cursor = self.code_cell(cell_idx+1).firstCursorPosition()
-                    cursor.insertText(code)
+                    cursor.insertText(code_after_cursor)
                     self.setTextCursor(self.code_cell(cell_idx+1).firstCursorPosition())
-                    if code == '': # no need to re-execute current
+                    if code_after_cursor == '': # no need to re-execute current
                         self.execute(cell_idx + 1)
                     else:
                         self.execute(cell_idx)
