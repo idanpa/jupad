@@ -18,6 +18,7 @@ from qtconsole.pygments_highlighter import PygmentsHighlighter
 from qtconsole.base_frontend_mixin import BaseFrontendMixin
 from qtconsole.manager import QtKernelManager
 from qtconsole.completion_widget import CompletionWidget
+from qtconsole.call_tip_widget import CallTipWidget
 
 from IPython.core.inputtransformer2 import TransformerManager
 from IPython.lib.latextools import latex_to_png
@@ -35,6 +36,7 @@ light_theme = {
     'inactive_color': QColor('#ffffff'),
     'active_color': QColor('#f4f4f4'),
     'splash_color': QColor('#a0a0a0'),
+    'is_dark': False,
 }
 theme = light_theme
 
@@ -87,6 +89,14 @@ class CompletionWidget_(CompletionWidget):
     def _complete_current(self):
         super()._complete_current()
         self._text_edit.execute(self._text_edit.complete_cell_idx)
+
+class CallTipWidget_(CallTipWidget):
+    def __init__(self, text_edit):
+        super().__init__(text_edit)
+        self.html_converter = Ansi2HTMLConverter(dark_bg=theme['is_dark'])
+
+    def _format_tooltip(self, doc):
+        return self.html_converter.convert(doc)
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent, debug=False):
@@ -165,10 +175,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_info = ''
         kernel_client.kernel_info()
 
-        self.html_converter = Ansi2HTMLConverter()
+        self.html_converter = Ansi2HTMLConverter(dark_bg=theme['is_dark'])
 
         self._control = self # for CompletionWidget
         self.completion_widget = CompletionWidget_(self, 0)
+        self.call_tip_widget = CallTipWidget_(self)
 
         self.log = logging.getLogger('pypad')
         self.log.setLevel(logging.DEBUG if debug else logging.INFO)
@@ -319,11 +330,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif self.splash_visible:
             self.hide_splash()
 
-    def pos_in_cell(self, cell_idx, cursor):
+    def cell_idx_and_pos_in_cell(self, cursor):
         cell = self.table.cellAt(cursor)
-        if cell.isValid() and cell.row() == cell_idx:
-            return cursor.position() - cell.firstCursorPosition().position()
-        return -1
+        if cell.isValid():
+            return cell.row(), cursor.position() - cell.firstCursorPosition().position()
+        return -1, -1
 
     @contextmanager
     def edit_block(self):
@@ -432,6 +443,14 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         for i in range(cell_idx+1, self.table.rows()):
             self.set_cell_color(i, theme['pending_color'])
 
+    def inspect(self):
+        cursor = self.textCursor()
+        self.inspect_cell_idx, self.inspect_pos_in_cell = self.cell_idx_and_pos_in_cell(cursor)
+        if self.inspect_cell_idx >= 0:
+            self.inspect_code = self.get_cell_code(self.inspect_cell_idx)
+            self.inspect_msg_id = self.kernel_client.inspect(self.inspect_code, self.inspect_pos_in_cell)
+            self.log.debug(f'inspect [{self.inspect_cell_idx}] ({self.inspect_msg_id.split("_")[-1]}): {self.inspect_code}')
+
     @pyqtSlot(int, str, bytes)
     def set_cell_latex_img(self, cell_idx, latex, img):
         try:
@@ -513,7 +532,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'complete_reply ({msg_id.split("_")[-1]})')
         cursor = self.textCursor()
         if  (msg_id == self.complete_msg_id and
-             self.pos_in_cell(self.complete_cell_idx, cursor) == self.complete_pos_in_cell and
+             self.cell_idx_and_pos_in_cell(cursor) == (self.complete_cell_idx, self.complete_pos_in_cell) and
              self.get_cell_code(self.complete_cell_idx) == self.complete_code):
 
             content = msg['content']
@@ -549,6 +568,17 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     current_pos = cursor.position()
                 self.completion_widget.show_items(cursor, matches, prefix_length=len(prefix))
 
+    def _handle_inspect_reply(self, msg):
+        msg_id = msg['parent_header']['msg_id']
+        self.log.debug(f'inspect_reply ({msg_id.split("_")[-1]})')
+        content = msg['content']
+        cursor = self.textCursor()
+        if  (msg_id == self.inspect_msg_id and
+             self.cell_idx_and_pos_in_cell(cursor) == (self.inspect_cell_idx, self.inspect_pos_in_cell) and
+             self.get_cell_code(self.inspect_cell_idx) == self.inspect_code and
+             content.get('status') == 'ok' and content.get('found', False)):
+                self.call_tip_widget.show_inspect_data(content)
+
     def _handle_kernel_info_reply(self, msg):
         self.log.debug(f'kernel_info_reply')
         language_info = msg['content']['language_info']
@@ -571,9 +601,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_input_request(self, msg):
         self.log.debug(f'input_request')
 
-    def _handle_inspect_reply(self, rep):
-        self.log.debug(f'inspect_reply')
-
     def _handle_shutdown_reply(self, msg):
         self.log.debug(f'shutdown_reply')
 
@@ -593,6 +620,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'kernel_died {since_last_heartbeat}')
 
     def keyPressEvent(self, e):
+        # self.log.debug(f'key press {e.text()}')
         # operations that always propegate:
         if e.key() in [Qt.Key_Z, Qt.Key_Y] and (e.modifiers() & Qt.ControlModifier):
             self.in_undo_redo = True
@@ -603,6 +631,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return super().keyPressEvent(e) # paste handled by insertFromMimeData
         elif e.key() == Qt.Key_R and (e.modifiers() & Qt.ControlModifier):
             self.restart_kernel()
+            return
+        elif e.key() == Qt.Key_Space and (e.modifiers() & Qt.ControlModifier):
+            self.inspect()
             return
 
         cursor = self.textCursor()
@@ -706,11 +737,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     check_cursor = QTextCursor(cursor)
                     check_cursor.movePosition(QTextCursor.Left, QTextCursor.KeepAnchor)
                     if check_cursor.hasSelection() and not check_cursor.selectedText().isspace():
-                        self.complete_cell_idx = cell_idx
-                        self.complete_pos_in_cell = self.pos_in_cell(cell_idx, cursor)
-                        self.complete_code = self.get_cell_code(cell_idx)
+                        self.complete_cell_idx, self.complete_pos_in_cell = self.cell_idx_and_pos_in_cell(cursor)
+                        self.complete_code = self.get_cell_code(self.complete_cell_idx)
                         self.complete_msg_id = self.kernel_client.complete(code=self.complete_code, cursor_pos=self.complete_pos_in_cell)
                         return
+
+            if e.text() == '(':
+                super().keyPressEvent(e)
+                self.inspect()
+                return
 
             old_code = self.get_cell_code(cell_idx)
             super().keyPressEvent(e)
