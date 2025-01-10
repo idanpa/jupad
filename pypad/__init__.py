@@ -434,9 +434,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
     @pyqtSlot(int, str, bytes)
     def set_cell_latex_img(self, cell_idx, latex, img):
-        if self.latex[cell_idx] == latex:
-            self.clear_cell(cell_idx)
-            self.append_img(cell_idx, img, 'PNG', latex)
+        try:
+            if self.latex[cell_idx] == latex:
+                self.clear_cell(cell_idx)
+                self.append_img(cell_idx, img, 'PNG', latex)
+        except IndexError:
+            pass
 
     def _handle_execute_result(self, msg):
         msg_id = msg['parent_header']['msg_id']
