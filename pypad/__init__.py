@@ -318,8 +318,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         else:
             cell_idx = cell.row()
 
-        for i in range(self.table.rows()):
-            self.set_cell_active(i, i == cell_idx)
+        with self.join_edit_block():
+            for i in range(self.table.rows()):
+                self.set_cell_active(i, i == cell_idx)
 
     @pyqtSlot()
     def text_changed(self):
@@ -387,11 +388,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.log.error(f'set image error: {e}')
 
     def set_cell_active(self, cell_idx, active):
-        with self.join_edit_block():
-            cell = self.code_cell(cell_idx)
-            cell_format = cell.format().toTableCellFormat()
-            cell_format.setLeftBorderBrush(theme['active_color'] if active else theme['inactive_color'])
-            cell.setFormat(cell_format)
+        cell = self.code_cell(cell_idx)
+        cell_format = cell.format().toTableCellFormat()
+        cell_format.setLeftBorderBrush(theme['active_color'] if active else theme['inactive_color'])
+        cell.setFormat(cell_format)
 
     def set_cell_color(self, cell_idx, color):
         with self.join_edit_block():
