@@ -300,11 +300,18 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 if cell.isValid():
                     cursor.setPosition(self.table.cellAt(0, cell.column()).firstCursorPosition().position(), QTextCursor.KeepAnchor)
                     self.setTextCursor(cursor)
-            if cursor.position() > self.table.lastCursorPosition().position():
+                else:
+                    cursor.setPosition(self.table.firstCursorPosition().position())
+                    self.setTextCursor(cursor)
+            elif cursor.position() > self.table.lastCursorPosition().position():
                 cell = self.table.cellAt(cursor.anchor())
                 if cell.isValid():
                     cursor.setPosition(self.table.cellAt(self.table.rows()-1, cell.column()).lastCursorPosition().position(), QTextCursor.KeepAnchor)
                     self.setTextCursor(cursor)
+                else:
+                    cursor.setPosition(self.code_cell(self.table.rows()-1).lastCursorPosition().position())
+                    self.setTextCursor(cursor)
+
         elif cursor.position() < self.table.firstCursorPosition().position():
             cursor.setPosition(self.table.firstCursorPosition().position())
             self.setTextCursor(cursor)
@@ -314,7 +321,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         cell = self.table.cellAt(cursor)
-        assert cell.isValid()
+        if not cell.isValid():
+            self.log.error(f'ERROR: Invalid pos {cursor.position()}')
+            return
         if mcol_num > 1 or mrow_num > 1 or cell.column() == 1:
             cell_idx = -1
         else:
