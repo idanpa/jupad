@@ -52,7 +52,8 @@ class AnimateExecutingCell(QVariantAnimation):
     def updateCurrentValue(self, value):
         # this is also called upon construction, update only if execute running
         if self.pypad.execute_running:
-            self.pypad.set_cell_color(self.pypad.execute_cell_idx, value)
+            with self.pypad.join_edit_block():
+                self.pypad.set_cell_color(self.pypad.execute_cell_idx, value)
 
 class LatexWorkerSignals(QObject):
     # separate class as you must be QObject to have signals
@@ -202,18 +203,19 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         self.splash_visible = True
 
-        self.set_cell_color(0, theme['out_background'])
+        with self.join_edit_block():
+            self.set_cell_color(0, theme['out_background'])
 
-        cursor = self.table.lastCursorPosition()
-        cursor.movePosition(QTextCursor.Right)
-        block_format = QTextBlockFormat()
-        block_format.setAlignment(Qt.AlignCenter)
-        cursor.setBlockFormat(block_format)
-        format = QTextCharFormat()
-        format.setForeground(theme['splash_color'])
-        cursor.insertText('\n\npypad - Python Notepad\n\n'
-                          + self.kernel_info + '\n\n'
-                          'Restart Kernel [Ctrl]+R\n', format)
+            cursor = self.table.lastCursorPosition()
+            cursor.movePosition(QTextCursor.Right)
+            block_format = QTextBlockFormat()
+            block_format.setAlignment(Qt.AlignCenter)
+            cursor.setBlockFormat(block_format)
+            format = QTextCharFormat()
+            format.setForeground(theme['splash_color'])
+            cursor.insertText('\n\npypad - Python Notepad\n\n'
+                            + self.kernel_info + '\n\n'
+                            'Restart Kernel [Ctrl]+R\n', format)
 
     def hide_splash(self):
         cursor = self.table.lastCursorPosition()
@@ -356,36 +358,33 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.edit_block_cursor.endEditBlock()
 
     def clear_cell(self, cell_idx):
-        with self.join_edit_block():
-            cell = self.out_cell(cell_idx)
-            cursor = cell.firstCursorPosition()
-            cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
-            cursor.removeSelectedText()
-            self.has_image[self.execute_cell_idx] = False
+        cell = self.out_cell(cell_idx)
+        cursor = cell.firstCursorPosition()
+        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+        self.has_image[self.execute_cell_idx] = False
 
     def append_text(self, cell_idx, txt):
-        with self.join_edit_block():
-            cell = self.out_cell(cell_idx)
-            cursor = cell.lastCursorPosition()
-            cursor.insertText(txt)
+        cell = self.out_cell(cell_idx)
+        cursor = cell.lastCursorPosition()
+        cursor.insertText(txt)
 
     def append_img(self, cell_idx, img, format, name):
-        with self.join_edit_block():
-            try:
-                # name should be unique to allow undo/redo
-                cell = self.out_cell(cell_idx)
-                cursor = cell.lastCursorPosition()
+        try:
+            # name should be unique to allow undo/redo
+            cell = self.out_cell(cell_idx)
+            cursor = cell.lastCursorPosition()
 
-                image = QImage()
-                image.loadFromData(img, format.upper())
-                self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
-                image_format = QTextImageFormat()
-                image_format.setName(name)
-                image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
-                cursor.insertImage(image_format)
-                self.has_image[self.execute_cell_idx] = True
-            except Exception as e:
-                self.log.error(f'set image error: {e}')
+            image = QImage()
+            image.loadFromData(img, format.upper())
+            self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
+            image_format = QTextImageFormat()
+            image_format.setName(name)
+            image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
+            cursor.insertImage(image_format)
+            self.has_image[self.execute_cell_idx] = True
+        except Exception as e:
+            self.log.error(f'set image error: {e}')
 
     def set_cell_active(self, cell_idx, active):
         cell = self.code_cell(cell_idx)
@@ -394,18 +393,16 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cell.setFormat(cell_format)
 
     def set_cell_color(self, cell_idx, color):
-        with self.join_edit_block():
-            cell = self.out_cell(cell_idx)
-            cell_format = cell.format().toTableCellFormat()
-            cell_format.setLeftBorderBrush(color)
-            cell.setFormat(cell_format)
+        cell = self.out_cell(cell_idx)
+        cell_format = cell.format().toTableCellFormat()
+        cell_format.setLeftBorderBrush(color)
+        cell.setFormat(cell_format)
 
     def set_cell_tooltip(self, cell_idx, tooltip):
-        with self.join_edit_block():
-            cell = self.out_cell(cell_idx)
-            cell_format = cell.format().toTableCellFormat()
-            cell_format.setToolTip(tooltip)
-            cell.setFormat(cell_format)
+        cell = self.out_cell(cell_idx)
+        cell_format = cell.format().toTableCellFormat()
+        cell_format.setToolTip(tooltip)
+        cell.setFormat(cell_format)
 
     def restart_kernel(self):
         self.kernel_manager.restart_kernel()
@@ -414,7 +411,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _execute(self, cell_idx, code=None):
         if code is None:
             code = self.get_cell_code(cell_idx)
-        self.clear_cell(cell_idx)
+        with self.join_edit_block():
+            self.clear_cell(cell_idx)
         if cell_idx == 0 and code == '' and self.table.rows() == 1:
             return # keep splash clean
         self.executing_animation.start()
@@ -440,8 +438,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execute_running = True
         self.execute_cell_idx = cell_idx
         self._execute(cell_idx, code)
-        for i in range(cell_idx+1, self.table.rows()):
-            self.set_cell_color(i, theme['pending_color'])
+        with self.join_edit_block():
+            for i in range(cell_idx+1, self.table.rows()):
+                self.set_cell_color(i, theme['pending_color'])
 
     def inspect(self):
         cursor = self.textCursor()
@@ -455,24 +454,27 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def set_cell_latex_img(self, cell_idx, latex, img):
         try:
             if self.latex[cell_idx] == latex:
-                self.clear_cell(cell_idx)
-                self.append_img(cell_idx, img, 'PNG', latex)
+                with self.join_edit_block():
+                    self.clear_cell(cell_idx)
+                    self.append_img(cell_idx, img, 'PNG', latex)
         except IndexError:
             pass
 
     def _handle_execute_result(self, msg):
         msg_id = msg['parent_header']['msg_id']
-        self.log.debug(f'execute_result ({msg_id.split("_")[-1]})')
+        self.log.debug(f'execute_result ({msg_id.split("_")[-1]}): {msg["content"]}')
         if msg_id != self.execute_msg_id:
             return
-        self._handle_execute_result_or_display_data(msg['content'], msg_id)
+        with self.join_edit_block():
+            self._handle_execute_result_or_display_data(msg['content'], msg_id)
 
     def _handle_display_data(self, msg):
         msg_id = msg['parent_header']['msg_id']
         self.log.debug(f'display_data ({msg_id.split("_")[-1]})')
         if msg_id != self.execute_msg_id:
             return
-        self._handle_execute_result_or_display_data(msg['content'], msg_id)
+        with self.join_edit_block():
+            self._handle_execute_result_or_display_data(msg['content'], msg_id)
 
     def _handle_execute_result_or_display_data(self, content, msg_id):
         data = content['data']
@@ -502,9 +504,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if msg_id != self.execute_msg_id:
             return
         self.executing_animation.stop()
-        self.set_cell_color(self.execute_cell_idx, theme['error_color'])
-        self.set_cell_tooltip(self.execute_cell_idx, self.html_converter.convert(''.join(content['traceback'])))
-        self.append_text(self.execute_cell_idx, ename)
+        with self.join_edit_block():
+            self.set_cell_color(self.execute_cell_idx, theme['error_color'])
+            self.set_cell_tooltip(self.execute_cell_idx, self.html_converter.convert(''.join(content['traceback'])))
+            self.append_text(self.execute_cell_idx, ename)
 
     def _handle_execute_reply(self, msg):
         msg_id = msg['parent_header']['msg_id']
@@ -516,10 +519,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count[self.execute_cell_idx] = content['execution_count']
         # no guarantee that reply comes after error message
         self.executing_animation.stop()
-        if status == 'ok':
-            self.set_cell_color(self.execute_cell_idx, theme['done_color'])
-        else:
-            self.set_cell_color(self.execute_cell_idx, theme['error_color'])
+        with self.join_edit_block():
+            if status == 'ok':
+                self.set_cell_color(self.execute_cell_idx, theme['done_color'])
+            else:
+                self.set_cell_color(self.execute_cell_idx, theme['error_color'])
         if self.execute_cell_idx+1 < self.table.rows():
             self.execute_cell_idx = self.execute_cell_idx+1
             self._execute(self.execute_cell_idx)
@@ -595,9 +599,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_clear_output(self, msg):
         self.log.debug(f'clear_output')
 
-    def _handle_exec_callback(self, msg):
-        self.log.debug(f'exec_callback')
-
     def _handle_input_request(self, msg):
         self.log.debug(f'input_request')
 
@@ -605,13 +606,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'shutdown_reply')
 
     def _handle_status(self, msg):
+        # self.kernel_status = msg['content']['execution_state']
         return
 
     def _handle_stream(self, msg):
         msg_id = msg['parent_header'].get('msg_id', 'IGNORE_ME')
         if msg_id != self.execute_msg_id:
             return
-        self.append_text(self.execute_cell_idx, msg['content']['text'])
+        with self.join_edit_block():
+            self.append_text(self.execute_cell_idx, msg['content']['text'])
 
     def _handle_kernel_restarted(self, died=True):
         self.log.debug(f'kernel_restarted')
