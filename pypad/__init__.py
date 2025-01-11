@@ -687,7 +687,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.insert_cell(mrow)
                 cell_idx = mrow
                 self.remove_cells(mrow+1, mrow_num)
-                self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
                 if e.key() in [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Delete]:
                     return
                 # else, add text and execute
@@ -796,16 +795,44 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         # \u2028=newline, \n=new cell
         lines = source.text().split('\n')
         lines.reverse()
-        cursor = self.textCursor()
-        cursor.insertText(lines.pop())
-        cell = self.table.cellAt(cursor)
-        if cell.isValid():
+
+        with self.edit_block():
+            cursor = self.textCursor()
+            cell = self.table.cellAt(cursor)
+            if not cell.isValid():
+                return
+            mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
+            if cell.column() == 1 or mcol_num > 1:
+                return
+            cell_idx = cell.row()
+            # if multiple cells selected, start with deleting them
+            if mrow > 0:
+                self.insert_cell(mrow)
+                cell_idx = mrow
+                self.remove_cells(mrow+1, mrow_num)
+
+            if len(lines) == 1:
+                cursor.insertText(lines.pop())
+            else:
+                cursor.setPosition(self.code_cell(cell_idx).lastCursorPosition().position(), QTextCursor.KeepAnchor)
+                code_after_cursor = cursor.selection().toPlainText()
+                cursor.removeSelectedText()
+
+                lines_to_insert = ''
+                while lines:
+                    lines_to_insert += lines.pop()
+                    is_complete, indent = self.is_complete(lines_to_insert)
+                    if is_complete == 'incomplete' and lines:
+                        lines_to_insert += '\u2028'
+                    else: # complete or invalid or no more lines
+                        self.insert_cell(cell_idx+1)
+                        cell_idx += 1
+                        self.textCursor().insertText(lines_to_insert)
+                        lines_to_insert = ''
+                self.textCursor().insertText(code_after_cursor)
+                self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
+
             self.execute(cell.row())
-        while lines:
-            # send keyEvent to make sure splitted propertly into cells
-            self.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key_Return,
-                    Qt.KeyboardModifier.NoModifier, '\r', False, 0))
-            self.textCursor().insertText(lines.pop())
 
     @pyqtSlot()
     def recalculate_columns(self):
