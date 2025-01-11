@@ -28,7 +28,7 @@ from ansi2html import Ansi2HTMLConverter
 light_theme = {
     'code_background': QColor('#ffffff'),
     'out_background': QColor('#fcfcfc'),
-    'separater_color': QColor('#f8f8f8'),
+    'separator_color': QColor('#f0f0f0'),
     'done_color': QColor('#d4f4d4'),
     'pending_color': QColor('#fcfcfc'),
     'executing_color': QColor('#f5ca6e'),
@@ -251,7 +251,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         out_cell_format.setLeftPadding(4)
         out_cell_format.setBottomBorder(1)
         out_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        out_cell_format.setBottomBorderBrush(theme['separater_color'])
+        out_cell_format.setBottomBorderBrush(theme['separator_color'])
         self.out_cell(cell_idx).setFormat(out_cell_format)
 
         code_cell_format = QTextTableCellFormat()
@@ -260,7 +260,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         code_cell_format.setLeftBorderBrush(theme['inactive_color'])
         code_cell_format.setBottomBorder(1)
         code_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        code_cell_format.setBottomBorderBrush(theme['separater_color'])
+        code_cell_format.setBottomBorderBrush(theme['separator_color'])
         self.code_cell(cell_idx).setFormat(code_cell_format)
 
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
