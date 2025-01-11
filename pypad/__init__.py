@@ -69,9 +69,9 @@ class LatexWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
-            image_data = latex_to_png(self.latex, wrap=False, backend='matplotlib')
+            image_data = latex_to_png(self.latex, wrap=False, backend='dvipng')
             if image_data is None:
-                image_data = latex_to_png(self.latex, wrap=False, backend='dvipng')
+                image_data = latex_to_png(self.latex, wrap=False, backend='matplotlib')
             if image_data:
                 self.signals.result.emit(self.cell_idx, self.latex, image_data)
         except Exception as e:
