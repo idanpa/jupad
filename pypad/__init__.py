@@ -418,8 +418,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             code = self.get_cell_code(cell_idx)
         with self.join_edit_block():
             self.clear_cell(cell_idx)
-        if cell_idx == 0 and code == '' and self.table.rows() == 1:
-            return # keep splash clean
         self.executing_animation.start()
 
         self.latex[cell_idx] = ''
@@ -526,7 +524,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.executing_animation.stop()
         with self.join_edit_block():
             if status == 'ok':
-                self.set_cell_color(self.execute_cell_idx, theme['done_color'])
+                # keep splash clean:
+                if self.execute_cell_idx == 0 and self.table.rows() == 1 and self.get_cell_code(self.execute_cell_idx) == '':
+                    self.set_cell_color(self.execute_cell_idx, theme['out_background'])
+                else:
+                    self.set_cell_color(self.execute_cell_idx, theme['done_color'])
             else:
                 self.set_cell_color(self.execute_cell_idx, theme['error_color'])
         if self.execute_cell_idx+1 < self.table.rows():
