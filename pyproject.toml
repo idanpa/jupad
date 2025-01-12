@@ -31,6 +31,7 @@ pypad = "pypad.__main__:main"
 
 [tool.setuptools]
 packages = ["pypad"]
+package-data = {"*" = ["resources/*.svg"]}
 
 [build-system]
 requires = ["setuptools>=43.0.0", "wheel"]
