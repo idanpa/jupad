@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame
 from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl, QSize,
                           QVariantAnimation, QEasingCurve,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
-from PyQt6.QtGui import (QFont, QFontMetrics, QFontDatabase, QImage,
+from PyQt6.QtGui import (QFont, QFontMetrics, QFontDatabase, QImage, QGuiApplication,
     QPainter, QColor, QKeyEvent, QResizeEvent, QCloseEvent,
     QTextCursor, QTextLength, QTextCharFormat, QTextFrameFormat, QTextBlockFormat,
     QTextDocument, QTextImageFormat, QTextTableCell, QTextTableFormat, QTextTableCellFormat)
@@ -81,10 +81,9 @@ class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
         # don't highlight output cells
         cursor = QTextCursor(self.currentBlock())
-        table = cursor.currentTable()
-        if table and table.cellAt(cursor).column() != 0:
-                return
-        return super().highlightBlock(string)
+        cell = self.parent().table.cellAt(cursor)
+        if cell.isValid() and cell.column() == 0:
+            return super().highlightBlock(string)
 
 class CompletionWidget_(CompletionWidget):
     def _complete_current(self):
@@ -124,9 +123,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.char_height = font_metrics.height()
         self.setTabStopDistance(4 * self.char_width)
 
-        self.highlighter = Highlighter(self)
-        self.highlighter.set_style('vs')
-
         self.setFrameStyle(QFrame.Shape.NoFrame)
 
         self.edit_block_cursor = self.textCursor()
@@ -141,6 +137,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             QTextLength(QTextLength.PercentageLength, 60)])
         self.table = cursor.insertTable(1, 2, table_format)
 
+        self.highlighter = Highlighter(self)
+        self.highlighter.set_style('vs')
+
         self.execute_msg_id = ''
         self.in_undo_redo = False
         # last execution count of each cell
@@ -151,6 +150,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.latex = ['']
         self.execute_running = False
         self.execute_cell_idx = -1
+        self.splash_visible = False
+        self.kernel_info = ''
 
         # for setting cells format:
         self.insert_cell(0)
@@ -172,10 +173,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_manager = kernel_manager
         self.kernel_client = kernel_client
 
-        self.splash_visible = False
-        self.kernel_info = ''
-        kernel_client.kernel_info()
-
         self.html_converter = Ansi2HTMLConverter(dark_bg=theme['is_dark'])
 
         self._control = self # for CompletionWidget
@@ -191,12 +188,11 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.divider_drag = False
         self.setMouseTracking(True)
-
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-
         self.transformer_manager = TransformerManager()
-
         self.thread_pool = QThreadPool()
+
+        kernel_client.kernel_info()
 
     def set_splash(self):
         if self.splash_visible:
@@ -845,6 +841,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
     @pyqtSlot()
     def recalculate_columns(self):
+        if QGuiApplication.mouseButtons() == Qt.LeftButton:
+            self.recalculate_columns_timer.start()
+            return
         table_format = self.table.format()
         width = self.viewport().width()*table_format.columnWidthConstraints()[1].rawValue()/100
         padding = 10
