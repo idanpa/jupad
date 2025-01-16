@@ -140,7 +140,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.highlighter = Highlighter(self)
         self.highlighter.set_style('vs')
 
-        self.execute_msg_id = ''
         self.in_undo_redo = False
         # last execution count of each cell
         self.execution_count = [None]
@@ -149,6 +148,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         # latex code of cell
         self.latex = ['']
         self.execute_running = False
+        self.prev_execute_msg_id = ''
+        self.execute_msg_id = ''
+        self.prev_execute_cell_idx = -1
         self.execute_cell_idx = -1
         self.splash_visible = False
         self.kernel_info = ''
@@ -349,7 +351,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor = cell.firstCursorPosition()
         cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
         cursor.removeSelectedText()
-        self.has_image[self.execute_cell_idx] = False
+        self.has_image[cell_idx] = False
 
     def append_text(self, cell_idx, txt):
         cell = self.out_cell(cell_idx)
@@ -400,7 +402,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             code = self.get_cell_code(cell_idx)
         with self.join_edit_block():
             self.clear_cell(cell_idx)
-        self.executing_animation.start()
 
         self.latex[cell_idx] = ''
         # set '_', '__', '___' to hold the previous cells output:
@@ -410,7 +411,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 prep_code += f'{var_name} = Out.get({self.execution_count[i]}, None)\n'
         self.kernel_client.execute(prep_code, silent=True, stop_on_error=False)
         # don't stop on error, we interrupt kernel and execute a new cell immediately after, otherwise might get aborted
+
+        self.prev_execute_cell_idx = self.execute_cell_idx
+        self.prev_execute_msg_id = self.execute_msg_id
+        self.execute_cell_idx = cell_idx
         self.execute_msg_id = self.kernel_client.execute(code, stop_on_error=False)
+        self.executing_animation.start()
         self.log.debug(f'execute [{cell_idx}] ({self.execute_msg_id.split("_")[-1]}): {code}')
 
     def execute(self, cell_idx, code=None):
@@ -421,7 +427,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.log.debug('interrupt kernel: new code')
                 self.kernel_manager.interrupt_kernel()
         self.execute_running = True
-        self.execute_cell_idx = cell_idx
         self._execute(cell_idx, code)
         with self.join_edit_block():
             for i in range(cell_idx+1, self.table.rows()):
@@ -448,38 +453,41 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_execute_result(self, msg):
         msg_id = msg['parent_header']['msg_id']
         self.log.debug(f'execute_result ({msg_id.split("_")[-1]}): {msg["content"]}')
-        if msg_id != self.execute_msg_id:
-            return
-        with self.join_edit_block():
-            self._handle_execute_result_or_display_data(msg['content'], msg_id)
+        self._handle_execute_result_or_display_data(msg['content'], msg_id)
 
     def _handle_display_data(self, msg):
         msg_id = msg['parent_header']['msg_id']
         self.log.debug(f'display_data ({msg_id.split("_")[-1]})')
-        if msg_id != self.execute_msg_id:
-            return
-        with self.join_edit_block():
-            self._handle_execute_result_or_display_data(msg['content'], msg_id)
+        self._handle_execute_result_or_display_data( msg['content'], msg_id)
 
     def _handle_execute_result_or_display_data(self, content, msg_id):
-        data = content['data']
-        if 'image/png' in data:
-            image_data = b64decode(data['image/png'].encode('ascii'))
-            self.append_img(self.execute_cell_idx, image_data, 'PNG', msg_id)
-        elif 'image/jpeg' in data:
-            image_data = b64decode(data['image/jpeg'].encode('ascii'))
-            self.append_img(self.execute_cell_idx, image_data, 'JPG', msg_id)
-        elif 'text/plain' in data:
-            if not self.has_image[self.execute_cell_idx]:
-                self.append_text(self.execute_cell_idx, data['text/plain'])
+        if msg_id == self.execute_msg_id:
+            cell_idx = self.execute_cell_idx
+        elif msg_id == self.prev_execute_msg_id:
+            # execute_reply and execute_results are using different sockets, and their order is not guaranteed
+            cell_idx = self.prev_execute_cell_idx
         else:
-            self.log.error(f'unsupported type {data}')
+            return
 
-        if 'text/latex' in data:
-            self.latex[self.execute_cell_idx] = data['text/latex']
-            latex_worker = LatexWorker(self.execute_cell_idx, data['text/latex'])
-            latex_worker.signals.result.connect(self.set_cell_latex_img)
-            self.thread_pool.start(latex_worker)
+        with self.join_edit_block():
+            data = content['data']
+            if 'image/png' in data:
+                image_data = b64decode(data['image/png'].encode('ascii'))
+                self.append_img(cell_idx, image_data, 'PNG', msg_id)
+            elif 'image/jpeg' in data:
+                image_data = b64decode(data['image/jpeg'].encode('ascii'))
+                self.append_img(cell_idx, image_data, 'JPG', msg_id)
+            elif 'text/plain' in data:
+                if not self.has_image[cell_idx]:
+                    self.append_text(cell_idx, data['text/plain'])
+            else:
+                self.log.error(f'unsupported type {data}')
+
+            if 'text/latex' in data:
+                self.latex[cell_idx] = data['text/latex']
+                latex_worker = LatexWorker(cell_idx, data['text/latex'])
+                latex_worker.signals.result.connect(self.set_cell_latex_img)
+                self.thread_pool.start(latex_worker)
 
     def _handle_error(self, msg):
         msg_id = msg['parent_header']['msg_id']
@@ -516,8 +524,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             else:
                 self.set_cell_color(self.execute_cell_idx, theme['error_color'])
         if self.execute_cell_idx+1 < self.table.rows():
-            self.execute_cell_idx = self.execute_cell_idx+1
-            self._execute(self.execute_cell_idx)
+            self._execute(self.execute_cell_idx+1)
         else:
             self.execute_running = False
 
