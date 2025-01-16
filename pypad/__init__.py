@@ -632,7 +632,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor = self.textCursor()
         if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
             if cursor.hasSelection():
-                return super().keyPressEvent(e) # see createMimeDataFromSelection
+                return super().keyPressEvent(e) # copy handled by createMimeDataFromSelection
             else:
                 self.log.debug('interrupt kernel: ctrl+c')
                 self.kernel_manager.interrupt_kernel()
@@ -755,13 +755,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         mrow, mrow_num, mcol, mcol_num = cursor.selectedTableCells()
         if mcol_num > 1:
             # doesn't make much sense to copy multiple columns
-            mime_data.setText(cursor.selection().toPlainText())
+            text = cursor.selection().toPlainText()
         elif mrow_num > 1 and mcol == 0:
             # copy code
             text = ''
             for cell_idx in range(mrow, mrow+mrow_num):
                 text += self.get_cell_code(cell_idx).replace('\n', '\u2028') + '\n'
-            mime_data.setText(text)
+            text = text
         elif mrow_num > 1 and mcol == 1:
             # copy output
             text = ''
@@ -770,22 +770,28 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     text += self.latex[cell_idx] + '\n'
                 else:
                     text += self.get_cell_out(cell_idx) + '\n'
-            mime_data.setText(text)
+            text = text
         else:
             # copy within single cell
             cell = self.table.cellAt(cursor)
             if cell.isValid():
                 cell_idx = cell.row()
                 if cell.column() == 1 and self.latex[cell_idx] != '':
-                    mime_data.setText(self.latex[cell_idx])
+                    text = self.latex[cell_idx]
                 else:
-                    mime_data.setText(cursor.selection().toPlainText().replace('\n', '\u2028'))
+                    text = cursor.selection().toPlainText().replace('\n', '\u2028')
 
+        mime_data.setData('pypad', text.encode())
+        mime_data.setText(text.replace('\u2028', '\n'))
         return mime_data
 
-    def insertFromMimeData(self, source: QMimeData):
-        # \u2028=newline, \n=new cell
-        lines = source.text().split('\n')
+    def insertFromMimeData(self, mime_data: QMimeData):
+        if mime_data.hasFormat('pypad'):
+            # where \u2028=newline, \n=new cell
+            text = mime_data.data('pypad').data().decode()
+        else:
+            text = mime_data.text()
+        lines = text.split('\n')
         if lines[-1] == '': # ignore last new line
             lines.pop()
         lines.reverse()
