@@ -101,6 +101,13 @@ class CallTipWidget_(CallTipWidget):
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent, debug=False):
+        self.log = logging.getLogger('pypad')
+        self.log.setLevel(logging.DEBUG if debug else logging.INFO)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter('%(relativeCreated)d %(message)s'))
+        handler.setLevel(logging.DEBUG)
+        self.log.addHandler(handler)
+        self.log.debug('start')
         super().__init__(parent)
 
         self.recalculate_columns_timer = QTimer()
@@ -127,7 +134,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.setFrameStyle(QFrame.Shape.NoFrame)
 
         self.edit_block_cursor = self.textCursor()
-        cursor = self.textCursor()
         table_format = QTextTableFormat()
         table_format.setBorder(0)
         table_format.setPadding(-3)
@@ -136,7 +142,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         table_format.setColumnWidthConstraints([
             QTextLength(QTextLength.PercentageLength, 40),
             QTextLength(QTextLength.PercentageLength, 60)])
-        self.table = cursor.insertTable(1, 2, table_format)
+        self.table = self.textCursor().insertTable(1, 2, table_format)
 
         self.highlighter = Highlighter(self)
         self.highlighter.set_style('vs')
@@ -155,6 +161,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execute_cell_idx = -1
         self.splash_visible = False
         self.kernel_info = ''
+        self.divider_drag = False
+        self.setMouseTracking(True)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         # for setting cells format:
         self.insert_cell(0)
@@ -166,6 +175,18 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.cursorPositionChanged.connect(self.position_changed)
 
+        self.open_file()
+        self.load_file()
+
+        if self.table.rows() == 1 and self.get_cell_code(0) == '':
+            self.set_splash(True)
+            self.splash_visible = True
+
+        self.log.debug('show')
+        self.parent().show()
+        self.setReadOnly(True)
+
+        self.log.debug('launching kernel')
         kernel_manager = QtKernelManager(kernel_name='python3')
         kernel_manager.start_kernel()
 
@@ -181,19 +202,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.completion_widget = CompletionWidget_(self, 0)
         self.call_tip_widget = CallTipWidget_(self)
 
-        self.log = logging.getLogger('pypad')
-        self.log.setLevel(logging.DEBUG if debug else logging.INFO)
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter('%(relativeCreated)d %(message)s'))
-        handler.setLevel(logging.DEBUG)
-        self.log.addHandler(handler)
-
-        self.divider_drag = False
-        self.setMouseTracking(True)
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.transformer_manager = TransformerManager()
         self.thread_pool = QThreadPool()
 
+        self.log.debug('kernel_info')
         # we finish startup upon kernel_info_reply, when kernel is ready
         kernel_client.kernel_info()
 
@@ -587,12 +599,14 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         language_info = msg['content']['language_info']
         self.kernel_info = language_info['name'] + ' ' + language_info['version']
 
-        self.open_file()
-        self.load_file()
+        if self.splash_visible:
+            # update splash
+            self.set_splash(True)
+
         self.execute(0)
 
         self.setUndoRedoEnabled(True)
-        self.parent().show()
+        self.setReadOnly(False)
 
     def _handle_clear_output(self, msg):
         self.log.debug(f'clear_output')
