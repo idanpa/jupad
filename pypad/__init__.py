@@ -183,6 +183,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.splash_visible = True
 
         self.log.debug('show')
+        self.parent().setCentralWidget(self)
         self.parent().show()
         self.setReadOnly(True)
 
@@ -1009,17 +1010,18 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
 class MainWindow(QMainWindow):
     def __init__(self, **kwargs):
+        self.init_done = False
         super().__init__()
-        self.setWindowTitle('pypad')
         self.resize(1100, 600)
+        self.setWindowTitle('pypad')
         self.pypad_text_edit = PyPadTextEdit(self, **kwargs)
-        self.setCentralWidget(self.pypad_text_edit)
+        self.init_done = True
 
     def resizeEvent(self, e: QResizeEvent):
         # QTextEdit's resizeEvent fires also upon text overflow in cells
         # no nice way to detect end of resize, use timer
-        # only if changed and not the initial resize (from -1,-1)
-        if e.size() != e.oldSize() and e.oldSize() != QSize(-1, -1):
+        # ignore the initial resize (from -1,-1), when pypad_text_edit is not ready
+        if self.init_done:
             self.pypad_text_edit.recalculate_columns_timer.start()
         return super().resizeEvent(e)
 
