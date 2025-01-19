@@ -574,7 +574,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             if len(matches) == 1:
                 cursor.setPosition(self.textCursor().position(), QTextCursor.KeepAnchor)
                 cursor.insertText(matches[0])
-
+                self.execute(self.complete_cell_idx)
             elif len(matches) > 1:
                 current_pos = self.textCursor().position()
                 prefix = os.path.commonprefix(matches)
