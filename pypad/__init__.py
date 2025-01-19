@@ -1,6 +1,7 @@
 import os
 import sys
 import io
+import re
 import logging
 from base64 import b64decode
 from contextlib import contextmanager
@@ -960,8 +961,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.file.seek(0)
             self.file.truncate()
             for i in range(self.table.rows()):
-                # '\u2028'=newline, '\n'=new cell
-                self.file.write(self.get_cell_code(i).replace('\n', '\u2028'))
+                self.file.write('# %%\n')
+                self.file.write(self.get_cell_code(i))
                 self.file.write('\n')
             self.file.flush()
             os.fsync(self.file.fileno())
@@ -969,17 +970,20 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.log.error(f'file save error: {e}')
 
     def load_file(self):
+        def rstrip(s):
+            # remove single new line
+            return s[:-1] if s[-1] == '\n' else s
         self.log.debug('load_file')
         try:
             self.file.seek(0)
-            lines = self.file.read().split('\n')
-            if lines[-1] == '': # ignore last new line
-                lines.pop()
-            if lines:
-                for line in lines[:-1]:
-                    self.textCursor().insertText(line)
+            cells = re.split(r'^[ \t]*#[ \t]*%%.*\n', self.file.read(), flags=re.MULTILINE)
+            if cells and cells[0] == '':
+                cells.pop(0) # first empty from split
+            if cells:
+                for cell in cells[:-1]:
+                    self.textCursor().insertText(rstrip(cell))
                     self.insert_cell(self.table.rows())
-                self.textCursor().insertText(lines[-1].rstrip('\n'))
+                self.textCursor().insertText(rstrip(cells[-1]))
         except Exception as e:
             self.log.exception(f'file load error')
 
