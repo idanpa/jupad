@@ -154,6 +154,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.has_image = [False]
         # latex code of cell
         self.latex = ['']
+        self.pending_newline = ['']
         self.execute_running = False
         self.prev_execute_msg_id = ''
         self.execute_msg_id = ''
@@ -246,6 +247,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count.insert(cell_idx, None)
         self.has_image.insert(cell_idx, False)
         self.latex.insert(cell_idx, '')
+        self.pending_newline.insert(cell_idx, '')
 
         out_cell_format = QTextTableCellFormat()
         out_cell_format.setLeftBorder(3)
@@ -278,6 +280,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.execution_count[cell_idx:cell_idx+count] = []
         self.has_image[cell_idx:cell_idx+count] = []
         self.latex[cell_idx:cell_idx+count] = []
+        self.pending_newline[cell_idx:cell_idx+count] = []
 
     def get_cell_code(self, cell_idx):
         cell = self.code_cell(cell_idx)
@@ -366,8 +369,15 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
         cursor.removeSelectedText()
         self.has_image[cell_idx] = False
+        self.pending_newline[cell_idx] = ''
 
     def append_text(self, cell_idx, txt):
+        if self.pending_newline[cell_idx]:
+            txt = self.pending_newline[cell_idx] + txt
+            self.pending_newline[cell_idx] = ''
+        if txt and txt[-1] == '\n':
+            self.pending_newline[cell_idx] = txt[-1]
+            txt = txt[:-1]
         cell = self.out_cell(cell_idx)
         cursor = cell.lastCursorPosition()
         cursor.insertText(txt)
@@ -377,7 +387,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             # name should be unique to allow undo/redo
             cell = self.out_cell(cell_idx)
             cursor = cell.lastCursorPosition()
-
+            # add image in new line if cell is not empty
+            if cursor != cell.firstCursorPosition():
+                cursor.insertText('\n')
             image = QImage()
             image.loadFromData(img, format.upper())
             self.document().addResource(QTextDocument.ImageResource, QUrl(name), image)
