@@ -635,6 +635,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif e.key() == Qt.Key_Space and (e.modifiers() & Qt.ControlModifier):
             self.inspect()
             return
+        elif e.key() == Qt.Key_Escape:
+            # escape key gives e.text()='\x1b', ignore it
+            return
 
         cursor = self.textCursor()
         if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
