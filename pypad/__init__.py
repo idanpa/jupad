@@ -370,6 +370,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor.removeSelectedText()
         self.has_image[cell_idx] = False
         self.pending_newline[cell_idx] = ''
+        cell_format = cell.format().toTableCellFormat()
+        cell_format.setToolTip('')
+        cell.setFormat(cell_format)
 
     def append_text(self, cell_idx, txt):
         if self.pending_newline[cell_idx]:
