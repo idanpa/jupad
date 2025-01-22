@@ -28,14 +28,14 @@ from ansi2html import Ansi2HTMLConverter
 
 light_theme = {
     'code_background': QColor('#ffffff'),
-    'out_background': QColor('#fcfcfc'),
+    'out_background': QColor('#f6f6f6'),
     'separator_color': QColor('#f0f0f0'),
-    'done_color': QColor('#d4f4d4'),
-    'pending_color': QColor('#fcfcfc'),
+    'done_color': QColor('#f6f6f6'),
+    'pending_color': QColor('#f6f6f6'),
     'executing_color': QColor('#f5ca6e'),
     'error_color': QColor('#f4bdbd'),
     'inactive_color': QColor('#ffffff'),
-    'active_color': QColor('#f4f4f4'),
+    'active_color': QColor('#f6f6f6'),
     'splash_color': QColor('#a0a0a0'),
     'is_dark': False,
 }
@@ -48,7 +48,7 @@ class AnimateExecutingCell(QVariantAnimation):
         self.setLoopCount(-1)
         self.setDuration(2000)
         self.setEasingCurve(QEasingCurve.InOutSine)
-        self.setKeyValues([(0.0, theme['executing_color']), (0.5, theme['out_background']), (1.0, theme['executing_color'])])
+        self.setKeyValues([(0.0, theme['out_background']), (0.5, theme['executing_color']), (1.0, theme['out_background'])])
 
     def updateCurrentValue(self, value):
         # this is also called upon construction, update only if execute running
