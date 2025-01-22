@@ -651,7 +651,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug(f'kernel_died {since_last_heartbeat}')
 
     def keyPressEvent(self, e):
-        # self.log.debug(f'key press {e.text()}')
+        # self.log.debug(f'keyPress {Qt.Key(e.key()).name} {Qt.KeyboardModifier(e.modifiers()).name} {e.text()}')
         # operations that always propegate:
         if e.key() in [Qt.Key_Z, Qt.Key_Y] and (e.modifiers() & Qt.ControlModifier):
             self.in_undo_redo = True
@@ -766,20 +766,43 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     self.setTextCursor(cursor)
                     self.remove_cells(cell_idx+1, 1)
                     self.execute(cell_idx)
+                    self.save_timer.start()
                     return
+            # shift+tab gives backtab:
+            elif e.key() == Qt.Key_Backtab or (e.key() == Qt.Key_Tab and (e.modifiers() & Qt.ShiftModifier)):
+                if cursor.hasSelection():
+                    start_pos = cursor.selectionStart()
+                    cursor.insertText(re.sub(r'\n {1,4}', r'\n', cursor.selection().toPlainText()))
+                    cursor.setPosition(start_pos, QTextCursor.KeepAnchor)
+                    self.setTextCursor(cursor)
+
+                cursor.movePosition(QTextCursor.StartOfLine)
+                for i in range(4):
+                    cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor)
+                    if cursor.selectedText() == ' ':
+                        cursor.removeSelectedText()
+                self.execute(cell_idx)
+                self.save_timer.start()
+                return
             elif e.key() == Qt.Key_Tab:
-                if not cursor.hasSelection():
+                if cursor.hasSelection():
+                    start_pos = cursor.selectionStart()
+                    cursor.insertText(cursor.selection().toPlainText().replace('\n', '\n    '))
+                    cursor.setPosition(start_pos, QTextCursor.KeepAnchor)
+                    self.setTextCursor(cursor)
+                    cursor.movePosition(QTextCursor.StartOfLine)
+                    cursor.insertText('    ')
+                else:
                     check_cursor = QTextCursor(cursor)
                     check_cursor.movePosition(QTextCursor.Left, QTextCursor.KeepAnchor)
-                    if check_cursor.hasSelection() and not check_cursor.selectedText().isspace():
+                    if check_cursor.selectedText().isspace() or check_cursor.selectedText() == '':
+                        cursor.insertText('    ')
+                        self.execute(cell_idx)
+                        self.save_timer.start()
+                    else:
                         self.complete_cell_idx, self.complete_pos_in_cell = self.cell_idx_and_pos_in_cell(cursor)
                         self.complete_code = self.get_cell_code(self.complete_cell_idx)
                         self.complete_msg_id = self.kernel_client.complete(code=self.complete_code, cursor_pos=self.complete_pos_in_cell)
-                        return
-
-            if e.text() == '(':
-                super().keyPressEvent(e)
-                self.inspect()
                 return
 
             old_code = self.get_cell_code(cell_idx)
@@ -788,6 +811,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             if code != old_code:
                 self.execute(cell_idx, code)
                 self.save_timer.start()
+
+            if e.text() == '(':
+                self.inspect()
 
     def createMimeDataFromSelection(self) -> QMimeData:
         mime_data = QMimeData()
