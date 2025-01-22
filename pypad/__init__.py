@@ -75,8 +75,8 @@ class LatexWorker(QRunnable):
                 image_data = latex_to_png(self.latex, wrap=False, backend='matplotlib')
             if image_data:
                 self.signals.result.emit(self.cell_idx, self.latex, image_data)
-        except Exception as e:
-            print(f'latex error: {e}')
+        except Exception:
+            logging.getLogger('pypad').exception('latex error')
 
 class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
@@ -401,8 +401,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             image_format.setMaximumWidth(self.table.format().columnWidthConstraints()[1])
             cursor.insertImage(image_format)
             self.has_image[self.execute_cell_idx] = True
-        except Exception as e:
-            self.log.error(f'set image error: {e}')
+        except Exception:
+            self.log.exception('set image error')
 
     def set_cell_active(self, cell_idx, active):
         cell = self.code_cell(cell_idx)
@@ -1003,8 +1003,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             file_name = 'pypad'
             self.file = open(os.path.join(profile_folder, file_name +'.py'), 'a+')
             self.log.debug(f'open_file: {self.file.name}')
-        except Exception as e:
-            self.log.error(f'file open error: {e}')
+        except Exception:
+            self.log.exception('file open error')
             self.file = io.StringIO()
 
     def close_file(self):
@@ -1022,8 +1022,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.file.write('\n')
             self.file.flush()
             os.fsync(self.file.fileno())
-        except Exception as e:
-            self.log.error(f'file save error: {e}')
+        except Exception:
+            self.log.exception(f'file save error')
 
     def load_file(self):
         def rstrip(s):
@@ -1040,7 +1040,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                     self.textCursor().insertText(rstrip(cell))
                     self.insert_cell(self.table.rows())
                 self.textCursor().insertText(rstrip(cells[-1]))
-        except Exception as e:
+        except Exception:
             self.log.exception(f'file load error')
 
     def closeEvent(self, event: QCloseEvent):
