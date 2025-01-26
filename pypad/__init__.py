@@ -21,9 +21,6 @@ from qtconsole.manager import QtKernelManager
 from qtconsole.completion_widget import CompletionWidget
 from qtconsole.call_tip_widget import CallTipWidget
 
-from IPython.core.inputtransformer2 import TransformerManager
-from IPython.lib.latextools import latex_to_png
-
 from ansi2html import Ansi2HTMLConverter
 
 light_theme = {
@@ -70,6 +67,7 @@ class LatexWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
+            from IPython.lib.latextools import latex_to_png
             image_data = latex_to_png(self.latex, wrap=False, backend='dvipng')
             if image_data is None:
                 image_data = latex_to_png(self.latex, wrap=False, backend='matplotlib')
@@ -203,7 +201,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.completion_widget = CompletionWidget_(self, 0)
         self.call_tip_widget = CallTipWidget_(self)
 
-        self.transformer_manager = TransformerManager()
+        self.transformer_manager = None
         self.thread_pool = QThreadPool()
 
         self.log.debug('kernel_info')
@@ -228,6 +226,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 cursor.removeSelectedText()
 
     def is_complete(self, code):
+        if self.transformer_manager is None:
+            from IPython.core.inputtransformer2 import TransformerManager
+            self.transformer_manager = TransformerManager()
         return self.transformer_manager.check_complete(code)
 
     def code_cell(self, cell_idx):
