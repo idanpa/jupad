@@ -94,10 +94,9 @@ class CompletionWidget_(CompletionWidget):
 class CallTipWidget_(CallTipWidget):
     def __init__(self, text_edit):
         super().__init__(text_edit)
-        self.html_converter = Ansi2HTMLConverter(dark_bg=theme['is_dark'])
 
     def _format_tooltip(self, doc):
-        return self.html_converter.convert(doc)
+        return self._text_edit.html_converter.convert(doc)
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent, debug=False):
@@ -198,7 +197,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_manager = kernel_manager
         self.kernel_client = kernel_client
 
-        self.html_converter = Ansi2HTMLConverter(dark_bg=theme['is_dark'])
+        self.html_converter = Ansi2HTMLConverter(inline=True, line_wrap=False, dark_bg=theme['is_dark'])
 
         self._control = self # for CompletionWidget
         self.completion_widget = CompletionWidget_(self, 0)
