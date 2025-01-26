@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.12", "3.13"]
-        os: [windows-latest, ubuntu-latest,]
+        python-version: ["3.9", "3.12"]
+        os: [windows-latest, ubuntu-latest, mac-latest]
     env:
       DISPLAY: ":99.0"
       QT_SELECT: "qt6"
