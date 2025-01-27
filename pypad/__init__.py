@@ -1026,6 +1026,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.log.exception(f'file load error')
 
     def closeEvent(self, event: QCloseEvent):
+        self.log.debug('close event')
+        self.parent().hide()
         self.save_file()
         self.close_file()
         self.kernel_manager.shutdown_kernel()
