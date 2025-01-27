@@ -97,7 +97,7 @@ class CallTipWidget_(CallTipWidget):
         return self._text_edit.html_converter.convert(doc)
 
 class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
-    def __init__(self, parent, debug=False):
+    def __init__(self, parent, file_path, debug=False):
         self.log = logging.getLogger('pypad')
         self.log.setLevel(logging.DEBUG if debug else logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
@@ -173,7 +173,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.cursorPositionChanged.connect(self.position_changed)
 
-        self.open_file()
+        self.open_file(file_path)
         self.load_file()
 
         if self.table.rows() == 1 and self.get_cell_code(0) == '':
@@ -980,30 +980,12 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         else:
             super().mouseReleaseEvent(event)
 
-    def open_file(self):
+    def open_file(self, file_path):
         try:
-            file_path = os.environ['PYPAD_SCRIPT']
-            if file_path == '':
-                self.file = io.StringIO()
-            else:
-                self.file = open(os.environ['PYPAD_SCRIPT'], 'a+')
-            return
-        except KeyError:
-            pass
-        try:
-            if os.name == 'nt':
-                profile_folder = os.environ.get('USERPROFILE')
-            else:
-                profile_folder = os.environ.get('HOME')
-            if not profile_folder:
-                profile_folder = os.getcwd()
-            profile_folder = os.path.join(profile_folder, '.pypad')
-            os.makedirs(profile_folder, exist_ok=True)
-
-            file_name = 'pypad'
-            self.file = open(os.path.join(profile_folder, file_name +'.py'), 'a+')
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            self.file = open(file_path, 'a+')
             self.log.debug(f'open_file: {self.file.name}')
-        except Exception:
+        except:
             self.log.exception('file open error')
             self.file = io.StringIO()
 
@@ -1021,7 +1003,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.file.write(self.get_cell_code(i))
                 self.file.write('\n')
             self.file.flush()
-            os.fsync(self.file.fileno())
+            # os.fsync(self.file.fileno()) # not really needed and io.StringIO has no fileno
         except Exception:
             self.log.exception(f'file save error')
 

@@ -17,6 +17,7 @@ if os.name == 'nt':
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('file', nargs='?', default=os.path.expanduser(os.path.join('~','.pypad','pypad.py')))
     args = parser.parse_args()
 
     app = QApplication([])
@@ -26,7 +27,7 @@ def main():
     app.icon = QIcon(icon_path)
     app.setWindowIcon(app.icon)
 
-    main_window = MainWindow(debug=args.debug)
+    main_window = MainWindow(file_path=args.file, debug=args.debug)
     sys.exit(app.exec())
 
 if __name__ == '__main__':

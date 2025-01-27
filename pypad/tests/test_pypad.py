@@ -1,7 +1,8 @@
 
 import os
-import pytest
 import logging
+import tempfile
+import pytest
 from pytestqt.qtbot import QtBot
 
 # avoid DeprecationWarning https://github.com/jupyter/jupyter_core/issues/398
@@ -17,14 +18,16 @@ class LogHandler(logging.Handler):
 
 @pytest.fixture
 def pypad(qtbot: QtBot):
-    os.environ['PYPAD_SCRIPT'] = ''
-    window = MainWindow()
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        file_path = tmp_file.name
+    window = MainWindow(file_path=file_path)
     pypad = window.pypad_text_edit
     pypad.log.addHandler(LogHandler())
     qtbot.waitUntil(lambda: pypad.kernel_info != '', timeout=5000)
     # todo: measure init time
     yield pypad
     window.close()
+    os.remove(file_path)
 
 def test_execution(pypad: PyPadTextEdit, qtbot: QtBot):
     qtbot.keyClicks(pypad, '1+1')
