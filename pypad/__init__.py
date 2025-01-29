@@ -2,11 +2,12 @@ import os
 import sys
 import io
 import re
+import traceback
 import logging
 from base64 import b64decode
 from contextlib import contextmanager
 
-from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame
+from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame, QMessageBox
 from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl, QSize,
                           QVariantAnimation, QEasingCurve,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
@@ -105,6 +106,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         handler.setLevel(logging.DEBUG)
         self.log.addHandler(handler)
         self.log.debug('start')
+        sys.excepthook = self.exception_hook
         super().__init__(parent)
 
         self.recalculate_columns_timer = QTimer()
@@ -207,6 +209,16 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug('kernel_info')
         # we finish startup upon kernel_info_reply, when kernel is ready
         kernel_client.kernel_info()
+
+    def exception_hook(self, etype, value, tb):
+        sys.__excepthook__(etype, value, tb)
+        msg = ''.join(traceback.format_exception(etype, value, tb))
+        QMessageBox(QMessageBox.Icon.Critical, 'Exception', msg).exec()
+        try: self.log.error(msg)
+        except: pass
+        try: self.save_file()
+        except: pass
+        sys.exit(1)
 
     def set_splash(self, visible):
         with self.join_edit_block():
