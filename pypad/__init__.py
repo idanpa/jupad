@@ -735,8 +735,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                         self.execute(0) # to show splash
                     return
                 # else, add text and execute
-            elif e.key() in [Qt.Key_Return, Qt.Key_Enter]  and not (e.modifiers() & Qt.ShiftModifier):
+            elif e.key() in [Qt.Key_Return, Qt.Key_Enter] and not (e.modifiers() & Qt.ShiftModifier):
                 # shift+enter always adds a new line
+                cursor.removeSelectedText()
                 cursor.setPosition(self.code_cell(cell_idx).firstCursorPosition().position(), QTextCursor.KeepAnchor)
                 is_complete, indent = self.is_complete(cursor.selection().toPlainText())
                 if is_complete == 'incomplete':
@@ -757,16 +758,17 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                         self.execute(cell_idx)
                 return
             elif e.key() == Qt.Key_Backspace:
-                if cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position():
-                    if cell_idx > 0:
-                        code = self.get_cell_code(cell_idx)
-                        self.remove_cells(cell_idx, 1)
-                        cursor = self.code_cell(cell_idx-1).lastCursorPosition()
-                        pos = cursor.position()
-                        cursor.insertText(code)
-                        cursor.setPosition(pos)
-                        self.setTextCursor(cursor)
-                        self.execute(cell_idx-1)
+                if (not cursor.hasSelection() and
+                        cursor.position() == self.code_cell(cell_idx).firstCursorPosition().position() and
+                        cell_idx > 0):
+                    code = self.get_cell_code(cell_idx)
+                    self.remove_cells(cell_idx, 1)
+                    cursor = self.code_cell(cell_idx-1).lastCursorPosition()
+                    pos = cursor.position()
+                    cursor.insertText(code)
+                    cursor.setPosition(pos)
+                    self.setTextCursor(cursor)
+                    self.execute(cell_idx-1)
                     return
             elif e.key() == Qt.Key_Delete:
                 if (not cursor.hasSelection() and
