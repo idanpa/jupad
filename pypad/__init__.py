@@ -506,7 +506,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_execute_result_or_display_data(self, content, msg_id):
         if msg_id == self.execute_msg_id:
             cell_idx = self.execute_cell_idx
-        elif msg_id == self.prev_execute_msg_id:
+        elif msg_id == self.prev_execute_msg_id and self.prev_execute_cell_idx != self.execute_cell_idx:
             # execute_reply and execute_results are using different sockets, and their order is not guaranteed
             cell_idx = self.prev_execute_cell_idx
         else:
