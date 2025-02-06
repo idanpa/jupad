@@ -232,7 +232,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 cursor.insertText('\n\n\n\n\n' + 'pypad - Python Notepad'.center(width) + '\n\n'
                                 + self.kernel_info.center(width) + '\n\n'
                                 '       [Ctrl]+R - Restart Kernel\n'
-                                '       [Ctrl]+C - Interrupt Kernel\n'
                                 , format)
             else:
                 cursor.removeSelectedText()
@@ -687,8 +686,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             if cursor.hasSelection():
                 return super().keyPressEvent(e) # copy handled by createMimeDataFromSelection
             else:
-                self.log.debug('interrupt kernel: ctrl+c')
-                self.kernel_manager.interrupt_kernel()
+                # todo: copy line that would be pasted as a complete cell above
+                pass
             return
         elif e.key() == Qt.Key_A and (e.modifiers() & Qt.ControlModifier):
             cursor = self.code_cell(0).firstCursorPosition()
