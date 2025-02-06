@@ -7,7 +7,7 @@ import logging
 from base64 import b64decode
 from contextlib import contextmanager
 
-from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame, QMessageBox, QFileDialog
 from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl, QSize,
                           QVariantAnimation, QEasingCurve,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
@@ -162,6 +162,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.splash_visible = False
         self.kernel_info = ''
         self.divider_drag = False
+        self.file = None
         self.setMouseTracking(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
@@ -176,7 +177,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.cursorPositionChanged.connect(self.position_changed)
 
         self.open_file(file_path)
-        self.load_file()
 
         if self.table.rows() == 1 and self.get_cell_code(0) == '':
             self.set_splash(True)
@@ -231,6 +231,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 format.setForeground(theme['splash_color'])
                 cursor.insertText('\n\n\n\n\n' + 'pypad - Python Notepad'.center(width) + '\n\n'
                                 + self.kernel_info.center(width) + '\n\n'
+                                '       [Ctrl]+O - Open File\n'
                                 '       [Ctrl]+R - Restart Kernel\n'
                                 , format)
             else:
@@ -674,6 +675,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         elif e.key() == Qt.Key_R and (e.modifiers() & Qt.ControlModifier):
             self.restart_kernel()
             return
+        elif e.key() == Qt.Key_O and (e.modifiers() & Qt.ControlModifier):
+            self.open_file_user()
+            return
         elif e.key() == Qt.Key_Space and (e.modifiers() & Qt.ControlModifier):
             self.inspect()
             return
@@ -993,21 +997,31 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         else:
             super().mouseReleaseEvent(event)
 
+    def open_file_user(self):
+        dir = os.path.dirname(self.file.name) if self.file else ''
+        file_path, sel_filter = QFileDialog.getOpenFileName(self, 'Open File', dir, 'Python Files (*.py);;All Files (*)')
+        if file_path:
+            self.open_file(file_path)
+
     def open_file(self, file_path):
+        self.save_file()
         try:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             self.file = open(file_path, 'a+')
-            self.log.debug(f'open_file: {self.file.name}')
-        except:
+        except Exception as e:
             self.log.exception('file open error')
-            self.file = io.StringIO()
-
-    def close_file(self):
-        self.file.close()
+            QMessageBox(QMessageBox.Icon.Critical, 'File Open Error', f'Failed to open "{file_path}"\n{type(e).__name__}: {e}').exec()
+            self.open_file_user()
+            return
+        self.parent().setWindowTitle(os.path.basename(file_path))
+        self.log.debug(f'open_file: {self.file.name}')
+        self.load_file(self.file)
 
     @pyqtSlot()
     def save_file(self):
         self.log.debug('save_file')
+        if self.file is None:
+            return
         try:
             self.file.seek(0)
             self.file.truncate()
@@ -1020,14 +1034,16 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         except Exception:
             self.log.exception(f'file save error')
 
-    def load_file(self):
+    def load_file(self, file):
+        self.log.debug('load_file')
+        self.insert_cell(0)
+        self.remove_cells(1, self.table.rows()-1)
         def rstrip(s):
             # remove single new line
             return s[:-1] if s[-1] == '\n' else s
-        self.log.debug('load_file')
         try:
-            self.file.seek(0)
-            cells = re.split(r'^[ \t]*#[ \t]*%%.*\n', self.file.read(), flags=re.MULTILINE)
+            file.seek(0)
+            cells = re.split(r'^[ \t]*#[ \t]*%%.*\n', file.read(), flags=re.MULTILINE)
             if cells and cells[0] == '':
                 cells.pop(0) # first empty from split
             if cells:
@@ -1042,7 +1058,6 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug('close event')
         self.parent().hide()
         self.save_file()
-        self.close_file()
         self.kernel_manager.shutdown_kernel()
         return super().closeEvent(event)
 
