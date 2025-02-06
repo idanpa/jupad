@@ -232,6 +232,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 cursor.insertText('\n\n\n\n\n' + 'pypad - Python Notepad'.center(width) + '\n\n'
                                 + self.kernel_info.center(width) + '\n\n'
                                 '       [Ctrl]+O - Open File\n'
+                                '       [Ctrl]+S - Save File As\n'
+                                '       [Ctrl]+[Shift]+S - Save File As\n'
                                 '       [Ctrl]+R - Restart Kernel\n'
                                 , format)
             else:
@@ -676,7 +678,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.restart_kernel()
             return
         elif e.key() == Qt.Key_O and (e.modifiers() & Qt.ControlModifier):
-            self.open_file_user()
+            self.user_open_file()
+            return
+        elif e.key() == Qt.Key_S and (e.modifiers() & Qt.ControlModifier):
+            if (e.modifiers() & Qt.ShiftModifier):
+                self.user_save_file_as()
+            else:
+                self.save_file()
             return
         elif e.key() == Qt.Key_Space and (e.modifiers() & Qt.ControlModifier):
             self.inspect()
@@ -1001,13 +1009,13 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         else:
             super().mouseReleaseEvent(event)
 
-    def open_file_user(self):
+    def user_open_file(self):
         dir = os.path.dirname(self.file.name) if self.file else ''
         file_path, sel_filter = QFileDialog.getOpenFileName(self, 'Open File', dir, 'Python Files (*.py);;All Files (*)')
         if file_path:
             self.open_file(file_path)
 
-    def open_file(self, file_path, retry=True):
+    def open_file(self, file_path, retry=True, load=True):
         self.save_file()
         try:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -1016,11 +1024,19 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             self.log.exception('file open error')
             QMessageBox(QMessageBox.Icon.Critical, 'File Open Error', f'Failed to open "{file_path}"\n{type(e).__name__}: {e}').exec()
             if retry:
-                self.open_file_user()
+                self.user_open_file()
             return
         self.parent().setWindowTitle(os.path.basename(file_path))
         self.log.debug(f'open_file: {self.file.name}')
-        self.load_file(self.file)
+        if load:
+            self.load_file(self.file)
+
+    def user_save_file_as(self):
+        dir = os.path.dirname(self.file.name) if self.file else ''
+        file_path, sel_filter = QFileDialog.getSaveFileName(self, 'Save File As', dir, 'Python Files (*.py);;All Files (*)')
+        if file_path:
+            self.open_file(file_path, retry=False, load=False)
+            self.save_file()
 
     @pyqtSlot()
     def save_file(self):
