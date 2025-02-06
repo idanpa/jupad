@@ -870,6 +870,10 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         return mime_data
 
     def insertFromMimeData(self, mime_data: QMimeData):
+        if mime_data.hasUrls():
+            if mime_data.urls()[0].isLocalFile():
+                self.open_file(mime_data.urls()[0].toLocalFile(), retry=False)
+            return
         if mime_data.hasFormat('pypad'):
             # where \u2028=newline, \n=new cell
             text = mime_data.data('pypad').data().decode()
@@ -1003,7 +1007,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         if file_path:
             self.open_file(file_path)
 
-    def open_file(self, file_path):
+    def open_file(self, file_path, retry=True):
         self.save_file()
         try:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -1011,7 +1015,8 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
         except Exception as e:
             self.log.exception('file open error')
             QMessageBox(QMessageBox.Icon.Critical, 'File Open Error', f'Failed to open "{file_path}"\n{type(e).__name__}: {e}').exec()
-            self.open_file_user()
+            if retry:
+                self.open_file_user()
             return
         self.parent().setWindowTitle(os.path.basename(file_path))
         self.log.debug(f'open_file: {self.file.name}')
