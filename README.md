@@ -1,6 +1,6 @@
 
 <h1 align="center">
-  <img src="jupad/resources/icon.svg" height="40" style="vertical-align:bottom"> jupad - Python Notepad
+  <img src="https://github.com/idanpa/jupad/raw/main/jupad/resources/icon.svg" height="40" style="vertical-align:bottom"> jupad - Python Notepad
 </h1>
 
 
@@ -17,13 +17,13 @@ jupad
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/jupad1.gif">
-    <source media="(prefers-color-scheme: light)" srcset="docs/jupad1.gif">
-    <img src="docs/jupad1.gif">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/idanpa/jupad/raw/main/docs/demo.gif">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/idanpa/jupad/raw/main/docs/demo.gif">
+    <img src="https://github.com/idanpa/jupad/raw/main/docs/demo.gif">
   </picture>
 </p>
 
 ## Installation 
 ```
-pip install git+https://github.com/idanpa/jupad
+pip install jupad
 ```
