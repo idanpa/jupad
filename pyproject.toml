@@ -1,5 +1,5 @@
 [project]
-name = "pypad"  
+name = "jupad"  
 version = "0.0.0" 
 description = "Python Notepad" 
 readme = "README.md"
@@ -22,15 +22,15 @@ dependencies = [
 ]
 
 [project.urls]  
-"Homepage" = "https://github.com/idanpa/pypad"
-"Bug Reports" = "https://github.com/idanpa/pypad/issues"
-"Source" = "https://github.com/idanpa/pypad"
+"Homepage" = "https://github.com/idanpa/jupad"
+"Bug Reports" = "https://github.com/idanpa/jupad/issues"
+"Source" = "https://github.com/idanpa/jupad"
 
 [project.gui-scripts]
-pypad = "pypad.__main__:main"
+jupad = "jupad.__main__:main"
 
 [tool.setuptools]
-packages = ["pypad"]
+packages = ["jupad"]
 package-data = {"*" = ["resources/*.svg"]}
 
 [build-system]

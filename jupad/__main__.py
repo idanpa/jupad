@@ -4,20 +4,20 @@ import argparse
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from pypad import MainWindow
+from jupad import MainWindow
 
 if os.name == 'nt':
     # for taskbar icon
     try:
         from ctypes import windll
-        windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'pypad.pypad')
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'jupad.jupad')
     except AttributeError:
         pass
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('file', nargs='?', default=os.path.expanduser(os.path.join('~','.pypad','pypad.py')))
+    parser.add_argument('file', nargs='?', default=os.path.expanduser(os.path.join('~','.jupad','jupad.py')))
     args = parser.parse_args()
 
     app = QApplication([])

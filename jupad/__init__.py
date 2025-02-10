@@ -40,9 +40,9 @@ light_theme = {
 theme = light_theme
 
 class AnimateExecutingCell(QVariantAnimation):
-    def __init__(self, pypad):
+    def __init__(self, jupad):
         super().__init__()
-        self.pypad = pypad
+        self.jupad = jupad
         self.setLoopCount(-1)
         self.setDuration(2000)
         self.setEasingCurve(QEasingCurve.InOutSine)
@@ -50,9 +50,9 @@ class AnimateExecutingCell(QVariantAnimation):
 
     def updateCurrentValue(self, value):
         # this is also called upon construction, update only if execute running
-        if self.pypad.execute_running:
-            with self.pypad.join_edit_block():
-                self.pypad.set_cell_color(self.pypad.execute_cell_idx, value)
+        if self.jupad.execute_running:
+            with self.jupad.join_edit_block():
+                self.jupad.set_cell_color(self.jupad.execute_cell_idx, value)
 
 class LatexWorkerSignals(QObject):
     # separate class as you must be QObject to have signals
@@ -75,7 +75,7 @@ class LatexWorker(QRunnable):
             if image_data:
                 self.signals.result.emit(self.cell_idx, self.latex, image_data)
         except Exception:
-            logging.getLogger('pypad').exception('latex error')
+            logging.getLogger('jupad').exception('latex error')
 
 class Highlighter(PygmentsHighlighter):
     def highlightBlock(self, string):
@@ -97,9 +97,9 @@ class CallTipWidget_(CallTipWidget):
     def _format_tooltip(self, doc):
         return self._text_edit.html_converter.convert(doc)
 
-class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
+class JupadTextEdit(QTextEdit, BaseFrontendMixin):
     def __init__(self, parent, file_path, debug=False):
-        self.log = logging.getLogger('pypad')
+        self.log = logging.getLogger('jupad')
         self.log.setLevel(logging.DEBUG if debug else logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(logging.Formatter('%(relativeCreated)d %(message)s'))
@@ -229,7 +229,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 width = 40
                 format = QTextCharFormat()
                 format.setForeground(theme['splash_color'])
-                cursor.insertText('\n\n\n\n\n' + 'pypad - Python Notepad'.center(width) + '\n\n'
+                cursor.insertText('\n\n\n\n\n' + 'jupad - Python Notepad'.center(width) + '\n\n'
                                 + self.kernel_info.center(width) + '\n\n'
                                 '       [Ctrl]+O - Open File\n'
                                 '       [Ctrl]+S - Save File As\n'
@@ -873,7 +873,7 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
                 else:
                     text = cursor.selection().toPlainText().replace('\n', '\u2028')
 
-        mime_data.setData('pypad', text.encode())
+        mime_data.setData('jupad', text.encode())
         mime_data.setText(text.replace('\u2028', '\n'))
         return mime_data
 
@@ -882,9 +882,9 @@ class PyPadTextEdit(QTextEdit, BaseFrontendMixin):
             if mime_data.urls()[0].isLocalFile():
                 self.open_file(mime_data.urls()[0].toLocalFile(), retry=False)
             return
-        if mime_data.hasFormat('pypad'):
+        if mime_data.hasFormat('jupad'):
             # where \u2028=newline, \n=new cell
-            text = mime_data.data('pypad').data().decode()
+            text = mime_data.data('jupad').data().decode()
         else:
             text = mime_data.text()
         lines = text.split('\n')
@@ -1087,18 +1087,18 @@ class MainWindow(QMainWindow):
         self.init_done = False
         super().__init__()
         self.resize(1100, 600)
-        self.setWindowTitle('pypad')
-        self.pypad_text_edit = PyPadTextEdit(self, **kwargs)
+        self.setWindowTitle('jupad')
+        self.jupad_text_edit = JupadTextEdit(self, **kwargs)
         self.init_done = True
 
     def resizeEvent(self, e: QResizeEvent):
         # QTextEdit's resizeEvent fires also upon text overflow in cells
         # no nice way to detect end of resize, use timer
-        # ignore the initial resize (from -1,-1), when pypad_text_edit is not ready
+        # ignore the initial resize (from -1,-1), when jupad_text_edit is not ready
         if self.init_done:
-            self.pypad_text_edit.recalculate_columns_timer.start()
+            self.jupad_text_edit.recalculate_columns_timer.start()
         return super().resizeEvent(e)
 
     def closeEvent(self, event: QCloseEvent):
-        self.pypad_text_edit.closeEvent(event)
+        self.jupad_text_edit.closeEvent(event)
         return super().closeEvent(event)

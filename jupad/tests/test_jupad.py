@@ -9,7 +9,7 @@ from pytestqt.qtbot import QtBot
 os.environ["JUPYTER_PLATFORM_DIRS"] = "1"
 
 from PyQt6.QtCore import Qt
-from pypad import MainWindow, PyPadTextEdit
+from jupad import MainWindow, JupadTextEdit
 
 class LogHandler(logging.Handler):
     def emit(self, record):
@@ -17,21 +17,21 @@ class LogHandler(logging.Handler):
             raise AssertionError(self.format(record))
 
 @pytest.fixture
-def pypad(qtbot: QtBot):
+def jupad(qtbot: QtBot):
     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
         file_path = tmp_file.name
     window = MainWindow(file_path=file_path)
-    pypad = window.pypad_text_edit
-    pypad.log.addHandler(LogHandler())
-    qtbot.waitUntil(lambda: pypad.kernel_info != '', timeout=5000)
+    jupad = window.jupad_text_edit
+    jupad.log.addHandler(LogHandler())
+    qtbot.waitUntil(lambda: jupad.kernel_info != '', timeout=5000)
     # todo: measure init time
-    yield pypad
+    yield jupad
     window.close()
     os.remove(file_path)
 
-def test_execution(pypad: PyPadTextEdit, qtbot: QtBot):
-    qtbot.keyClicks(pypad, '1+1')
-    qtbot.waitUntil(lambda: pypad.get_cell_out(0) == '2')
-    qtbot.keyClick(pypad, Qt.Key_Enter)
-    qtbot.keyClicks(pypad, 'print(1)')
-    qtbot.waitUntil(lambda: pypad.get_cell_out(1) == '1')
+def test_execution(jupad: JupadTextEdit, qtbot: QtBot):
+    qtbot.keyClicks(jupad, '1+1')
+    qtbot.waitUntil(lambda: jupad.get_cell_out(0) == '2')
+    qtbot.keyClick(jupad, Qt.Key_Enter)
+    qtbot.keyClicks(jupad, 'print(1)')
+    qtbot.waitUntil(lambda: jupad.get_cell_out(1) == '1')

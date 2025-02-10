@@ -1,6 +1,6 @@
 
 <h1 align="center">
-  <img src="pypad/resources/icon.svg" height="40" style="vertical-align:bottom"> PyPad - Python Notepad
+  <img src="jupad/resources/icon.svg" height="40" style="vertical-align:bottom"> jupad - Python Notepad
 </h1>
 
 
@@ -12,18 +12,18 @@ Based on [qtconsole](https://github.com/jupyter/qtconsole).
 
 ## Usage
 ```
-pypad
+jupad
 ```
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/pypad1.gif">
-    <source media="(prefers-color-scheme: light)" srcset="docs/pypad1.gif">
-    <img src="docs/pypad1.gif">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/jupad1.gif">
+    <source media="(prefers-color-scheme: light)" srcset="docs/jupad1.gif">
+    <img src="docs/jupad1.gif">
   </picture>
 </p>
 
 ## Installation 
 ```
-pip install git+https://github.com/idanpa/pypad
+pip install git+https://github.com/idanpa/jupad
 ```
