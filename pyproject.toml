@@ -1,6 +1,6 @@
 [project]
 name = "jupad"  
-version = "0.0.1" 
+version = "0.0.2" 
 description = "Python Notepad" 
 readme = "README.md"
 requires-python = ">=3.7"
