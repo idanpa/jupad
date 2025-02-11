@@ -284,17 +284,25 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
 
-    def remove_cells(self, cell_idx, count):
-        if self.execute_running: # stop execution
+    def stop_execution(self):
+        if self.execute_running:
             self.executing_animation.stop()
             self.execute_msg_id = ''
             self.kernel_manager.interrupt_kernel()
 
+    def remove_cells(self, cell_idx, count):
+        self.stop_execution()
         self.table.removeRows(cell_idx, count)
         self.execution_count[cell_idx:cell_idx+count] = []
         self.has_image[cell_idx:cell_idx+count] = []
         self.latex[cell_idx:cell_idx+count] = []
         self.pending_newline[cell_idx:cell_idx+count] = []
+
+    def sync_amount_of_cells(self):
+        self.execution_count = [None]*self.table.rows()
+        self.has_image = [False]*self.table.rows()
+        self.latex = ['']*self.table.rows()
+        self.pending_newline = ['']*self.table.rows()
 
     def get_cell_code(self, cell_idx):
         cell = self.code_cell(cell_idx)
@@ -669,8 +677,12 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         # operations that always propegate:
         if e.key() in [Qt.Key_Z, Qt.Key_Y] and (e.modifiers() & Qt.ControlModifier):
             self.in_undo_redo = True
+            # undo/redo might change the amount of cells
+            self.stop_execution()
             super().keyPressEvent(e)
+            self.sync_amount_of_cells()
             self.in_undo_redo = False
+            # don't restart execute, usually undo/redo handles the output as well
             return
         elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e) # paste handled by insertFromMimeData
