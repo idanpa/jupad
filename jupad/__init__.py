@@ -189,7 +189,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
 
         self.log.debug('launching kernel')
         kernel_manager = QtKernelManager(kernel_name='python3')
-        kernel_manager.start_kernel()
+        kernel_manager.start_kernel(extra_arguments=['--InteractiveShell.ast_node_interactivity=last_expr_or_assign'])
 
         kernel_client = kernel_manager.client()
         kernel_client.start_channels()
