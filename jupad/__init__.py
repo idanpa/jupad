@@ -1086,12 +1086,17 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
                 self.textCursor().insertText(rstrip(cells[-1]))
         except Exception:
             self.log.exception(f'file load error')
+        if self.kernel_info != '': # kernel is ready
+            self.execute(0)
 
     def closeEvent(self, event: QCloseEvent):
         self.log.debug('close event')
         self.parent().hide()
         self.save_file()
+        self.executing_animation.stop()
         self.kernel_manager.shutdown_kernel()
+        if self.file:
+            self.file.close()
         return super().closeEvent(event)
 
 class MainWindow(QMainWindow):
