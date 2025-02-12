@@ -700,9 +700,6 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             else:
                 self.save_file()
             return
-        elif e.key() == Qt.Key_Space and (e.modifiers() & Qt.ControlModifier):
-            self.inspect()
-            return
         elif e.key() == Qt.Key_Escape:
             # escape key gives e.text()='\x1b', ignore it
             return
@@ -749,6 +746,8 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             return super().keyPressEvent(e)
         if col == 1 or mcol_num > 1:
             return
+        if e.key() == Qt.Key_Space and (e.modifiers() & Qt.ControlModifier):
+            return self.inspect()
         with self.edit_block():
             # if multiple cells selected, start with deleting them
             if mrow_num > 1 and (e.key() in [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Delete] or e.text() != ''):
