@@ -225,6 +225,8 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         sys.exit(1)
 
     def set_splash(self, visible):
+        if self.splash_visible == visible == False:
+            return
         with self.join_edit_block():
             cursor = self.table.lastCursorPosition()
             cursor.movePosition(QTextCursor.Right)
@@ -242,6 +244,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
                                 , format)
             else:
                 cursor.removeSelectedText()
+        self.splash_visible = visible
 
     def is_complete(self, code):
         if self.transformer_manager is None:
@@ -568,13 +571,8 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         # no guarantee that reply comes after error message
         self.executing_animation.stop()
         with self.join_edit_block():
+            self.set_splash(self.execute_cell_idx == 0 and self.table.rows() == 1 and self.get_cell_code(0) == '')
             if status == 'ok':
-                if self.execute_cell_idx == 0 and self.table.rows() == 1 and self.get_cell_code(0) == '':
-                    self.set_splash(True)
-                    self.splash_visible = True
-                elif self.splash_visible:
-                    self.set_splash(False)
-                    self.splash_visible = False
                 self.set_cell_color(self.execute_cell_idx, theme['done_color'])
             else:
                 self.set_cell_color(self.execute_cell_idx, theme['error_color'])
