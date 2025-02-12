@@ -7,7 +7,7 @@ import logging
 from base64 import b64decode
 from contextlib import contextmanager
 
-from PyQt6.QtWidgets import QMainWindow, QTextEdit, QFrame, QMessageBox, QFileDialog
+from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QFrame, QMessageBox, QFileDialog
 from PyQt6.QtCore import (Qt, QObject, QRect, QMimeData, QEvent, QUrl, QSize,
                           QVariantAnimation, QEasingCurve,
                           QTimer, QRunnable, QThreadPool, pyqtSlot, pyqtSignal)
@@ -108,6 +108,10 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.log.debug('start')
         sys.excepthook = self.exception_hook
         super().__init__(parent)
+
+        msg_box_text_int_flags = (Qt.TextSelectableByMouse|Qt.LinksAccessibleByMouse).value
+        QApplication.instance().setStyleSheet(
+            f'QMessageBox {{ messagebox-text-interaction-flags: {msg_box_text_int_flags}; }}')
 
         self.recalculate_columns_timer = QTimer()
         self.recalculate_columns_timer.setSingleShot(True)
