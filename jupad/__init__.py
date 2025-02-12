@@ -35,9 +35,26 @@ light_theme = {
     'inactive_color': QColor('#ffffff'),
     'active_color': QColor('#f6f6f6'),
     'splash_color': QColor('#a0a0a0'),
+    'pygments_style': 'vs',
     'is_dark': False,
+    'stylesheet': 'QTextEdit { background-color: #ffffff; color: #000000;}'
 }
-theme = light_theme
+
+dark_theme = {
+    'code_background': QColor('#000000'),
+    'out_background': QColor('#101010'),
+    'separator_color': QColor('#606060'),
+    'done_color': QColor('#101010'),
+    'pending_color': QColor('#101010'),
+    'executing_color': QColor('#ca9040'),
+    'error_color': QColor('#a02020'),
+    'inactive_color': QColor('#000000'),
+    'active_color': QColor('#606060'),
+    'splash_color': QColor('#d0d0d0'),
+    'pygments_style': 'monokai',
+    'is_dark': True,
+    'stylesheet': 'QTextEdit { background-color: #000000; color: #ffffff; }'
+}
 
 class AnimateExecutingCell(QVariantAnimation):
     def __init__(self, jupad):
@@ -46,7 +63,7 @@ class AnimateExecutingCell(QVariantAnimation):
         self.setLoopCount(-1)
         self.setDuration(2000)
         self.setEasingCurve(QEasingCurve.InOutSine)
-        self.setKeyValues([(0.0, theme['out_background']), (0.5, theme['executing_color']), (1.0, theme['out_background'])])
+        self.setKeyValues([(0.0, self.jupad.theme['out_background']), (0.5, self.jupad.theme['executing_color']), (1.0, self.jupad.theme['out_background'])])
 
     def updateCurrentValue(self, value):
         # this is also called upon construction, update only if execute running
@@ -109,8 +126,13 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         sys.excepthook = self.exception_hook
         super().__init__(parent)
 
+        if QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark:
+            self.theme = dark_theme
+        else:
+            self.theme = light_theme
+
         msg_box_text_int_flags = (Qt.TextSelectableByMouse|Qt.LinksAccessibleByMouse).value
-        QApplication.instance().setStyleSheet(
+        QApplication.instance().setStyleSheet(self.theme['stylesheet'] +
             f'QMessageBox {{ messagebox-text-interaction-flags: {msg_box_text_int_flags}; }}')
 
         self.recalculate_columns_timer = QTimer()
@@ -148,7 +170,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.table = self.textCursor().insertTable(1, 2, table_format)
 
         self.highlighter = Highlighter(self)
-        self.highlighter.set_style('vs')
+        self.highlighter.set_style(self.theme['pygments_style'])
 
         self.in_undo_redo = False
         # last execution count of each cell
@@ -201,7 +223,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_manager = kernel_manager
         self.kernel_client = kernel_client
 
-        self.html_converter = Ansi2HTMLConverter(inline=True, line_wrap=False, dark_bg=theme['is_dark'])
+        self.html_converter = Ansi2HTMLConverter(inline=True, line_wrap=False, dark_bg=self.theme['is_dark'])
 
         self._control = self # for CompletionWidget
         self.completion_widget = CompletionWidget_(self, 0)
@@ -234,7 +256,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             if visible:
                 width = 40
                 format = QTextCharFormat()
-                format.setForeground(theme['splash_color'])
+                format.setForeground(self.theme['splash_color'])
                 cursor.insertText('\n\n\n\n\n' + 'jupad - Python Notepad'.center(width) + '\n\n'
                                 + self.kernel_info.center(width) + '\n\n'
                                 '       [Ctrl]+O - Open File\n'
@@ -273,20 +295,20 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         out_cell_format = QTextTableCellFormat()
         out_cell_format.setLeftBorder(3)
         out_cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        out_cell_format.setLeftBorderBrush(theme['pending_color'])
+        out_cell_format.setLeftBorderBrush(self.theme['pending_color'])
         out_cell_format.setLeftPadding(4)
         out_cell_format.setBottomBorder(1)
         out_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        out_cell_format.setBottomBorderBrush(theme['separator_color'])
+        out_cell_format.setBottomBorderBrush(self.theme['separator_color'])
         self.out_cell(cell_idx).setFormat(out_cell_format)
 
         code_cell_format = QTextTableCellFormat()
         code_cell_format.setLeftBorder(3)
         code_cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        code_cell_format.setLeftBorderBrush(theme['inactive_color'])
+        code_cell_format.setLeftBorderBrush(self.theme['inactive_color'])
         code_cell_format.setBottomBorder(1)
         code_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
-        code_cell_format.setBottomBorderBrush(theme['separator_color'])
+        code_cell_format.setBottomBorderBrush(self.theme['separator_color'])
         self.code_cell(cell_idx).setFormat(code_cell_format)
 
         self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
@@ -436,7 +458,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
     def set_cell_active(self, cell_idx, active):
         cell = self.code_cell(cell_idx)
         cell_format = cell.format().toTableCellFormat()
-        cell_format.setLeftBorderBrush(theme['active_color'] if active else theme['inactive_color'])
+        cell_format.setLeftBorderBrush(self.theme['active_color'] if active else self.theme['inactive_color'])
         cell.setFormat(cell_format)
 
     def set_cell_color(self, cell_idx, color):
@@ -488,7 +510,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self._execute(cell_idx, code)
         with self.join_edit_block():
             for i in range(cell_idx+1, self.table.rows()):
-                self.set_cell_color(i, theme['pending_color'])
+                self.set_cell_color(i, self.theme['pending_color'])
 
     def inspect(self):
         cursor = self.textCursor()
@@ -556,7 +578,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             return
         self.executing_animation.stop()
         with self.join_edit_block():
-            self.set_cell_color(self.execute_cell_idx, theme['error_color'])
+            self.set_cell_color(self.execute_cell_idx, self.theme['error_color'])
             self.set_cell_tooltip(self.execute_cell_idx, self.html_converter.convert(''.join(content['traceback'])))
             self.append_text(self.execute_cell_idx, ename)
 
@@ -573,9 +595,9 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         with self.join_edit_block():
             self.set_splash(self.execute_cell_idx == 0 and self.table.rows() == 1 and self.get_cell_code(0) == '')
             if status == 'ok':
-                self.set_cell_color(self.execute_cell_idx, theme['done_color'])
+                self.set_cell_color(self.execute_cell_idx, self.theme['done_color'])
             else:
-                self.set_cell_color(self.execute_cell_idx, theme['error_color'])
+                self.set_cell_color(self.execute_cell_idx, self.theme['error_color'])
         if self.execute_cell_idx+1 < self.table.rows():
             self._execute(self.execute_cell_idx+1)
         else:
@@ -973,9 +995,9 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         divider_precentage = table_format.columnWidthConstraints()[0].rawValue()
 
         editor_rect = QRect(rect.x(), rect.y(), int(rect.width() * divider_precentage/100), rect.height())
-        painter.fillRect(editor_rect, theme['code_background'])
+        painter.fillRect(editor_rect, self.theme['code_background'])
         out_rect = QRect(rect.x()+editor_rect.width(), rect.y(), rect.width() - editor_rect.width(), rect.height())
-        painter.fillRect(out_rect, theme['out_background'])
+        painter.fillRect(out_rect, self.theme['out_background'])
 
         super().paintEvent(event)
 
