@@ -21,6 +21,8 @@ def main():
     args = parser.parse_args()
 
     app = QApplication([])
+    if os.name == 'nt':
+        app.setStyle('windows11')
 
     base_path = os.path.abspath(os.path.dirname(__file__))
     icon_path = os.path.join(base_path, 'resources', 'icon.svg')

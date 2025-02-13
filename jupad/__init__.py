@@ -37,7 +37,6 @@ light_theme = {
     'splash_color': QColor('#a0a0a0'),
     'pygments_style': 'vs',
     'is_dark': False,
-    'stylesheet': 'QTextEdit { background-color: #ffffff; color: #000000;}'
 }
 
 dark_theme = {
@@ -53,7 +52,6 @@ dark_theme = {
     'splash_color': QColor('#d0d0d0'),
     'pygments_style': 'monokai',
     'is_dark': True,
-    'stylesheet': 'QTextEdit { background-color: #000000; color: #ffffff; }'
 }
 
 class AnimateExecutingCell(QVariantAnimation):
@@ -132,8 +130,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             self.theme = light_theme
 
         msg_box_text_int_flags = (Qt.TextSelectableByMouse|Qt.LinksAccessibleByMouse).value
-        QApplication.instance().setStyleSheet(self.theme['stylesheet'] +
-            f'QMessageBox {{ messagebox-text-interaction-flags: {msg_box_text_int_flags}; }}')
+        QApplication.instance().setStyleSheet(f'QMessageBox {{ messagebox-text-interaction-flags: {msg_box_text_int_flags}; }}')
 
         self.recalculate_columns_timer = QTimer()
         self.recalculate_columns_timer.setSingleShot(True)
