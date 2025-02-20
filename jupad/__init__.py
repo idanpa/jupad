@@ -1,6 +1,5 @@
 import os
 import sys
-import io
 import re
 import traceback
 import logging
@@ -113,7 +112,8 @@ class CallTipWidget_(CallTipWidget):
         return self._text_edit.html_converter.convert(doc)
 
 class JupadTextEdit(QTextEdit, BaseFrontendMixin):
-    def __init__(self, parent, file_path, debug=False):
+    def __init__(self, parent, file_path, kernel_name='python3', debug=False):
+        self.kernel_name = kernel_name
         self.log = logging.getLogger('jupad')
         self.log.setLevel(logging.DEBUG if debug else logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
@@ -188,12 +188,17 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.file = None
         self.setMouseTracking(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.html_converter = Ansi2HTMLConverter(inline=True, line_wrap=False, dark_bg=self.theme['is_dark'])
+        self._control = self # for CompletionWidget
+        self.completion_widget = CompletionWidget_(self, 0)
+        self.call_tip_widget = CallTipWidget_(self)
+        self.transformer_manager = None
+        self.thread_pool = QThreadPool()
+        self.executing_animation = AnimateExecutingCell(self)
 
         # for setting cells format:
         self.insert_cell(0)
         self.remove_cells(1, 1)
-
-        self.executing_animation = AnimateExecutingCell(self)
 
         self.document().begin().setVisible(False) # https://stackoverflow.com/questions/76061158
 
@@ -206,13 +211,18 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             self.splash_visible = True
 
         self.log.debug('show')
+        self.setReadOnly(True)
         self.parent().setCentralWidget(self)
         self.parent().show()
-        self.setReadOnly(True)
+        self.launch_kernel()
 
-        self.log.debug('launching kernel')
-        kernel_manager = QtKernelManager(kernel_name='python3')
-        kernel_manager.start_kernel(extra_arguments=['--InteractiveShell.ast_node_interactivity=last_expr_or_assign'])
+    def launch_kernel(self):
+        self.log.debug('launch kernel')
+        kernel_manager = QtKernelManager(kernel_name=self.kernel_name)
+        extra_arguments = []
+        if self.kernel_name in ['python3', 'sagemath']: # mathics?
+            extra_arguments.append('--InteractiveShell.ast_node_interactivity=last_expr_or_assign')
+        kernel_manager.start_kernel(extra_arguments=extra_arguments)
 
         kernel_client = kernel_manager.client()
         kernel_client.start_channels()
@@ -220,16 +230,6 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_manager = kernel_manager
         self.kernel_client = kernel_client
 
-        self.html_converter = Ansi2HTMLConverter(inline=True, line_wrap=False, dark_bg=self.theme['is_dark'])
-
-        self._control = self # for CompletionWidget
-        self.completion_widget = CompletionWidget_(self, 0)
-        self.call_tip_widget = CallTipWidget_(self)
-
-        self.transformer_manager = None
-        self.thread_pool = QThreadPool()
-
-        self.log.debug('kernel_info')
         # we finish startup upon kernel_info_reply, when kernel is ready
         kernel_client.kernel_info()
 
@@ -266,10 +266,28 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.splash_visible = visible
 
     def is_complete(self, code):
-        if self.transformer_manager is None:
-            from IPython.core.inputtransformer2 import TransformerManager
-            self.transformer_manager = TransformerManager()
-        return self.transformer_manager.check_complete(code)
+        if self.kernel_name in ['python3', 'sagemath']:
+            if self.transformer_manager is None:
+                from IPython.core.inputtransformer2 import TransformerManager
+                self.transformer_manager = TransformerManager()
+            return self.transformer_manager.check_complete(code)
+        elif 'xcpp' in self.kernel_name:
+            # poor man's cpp is_complete
+            st = ['EOF']
+            for c in code:
+                if c in '({[':
+                    st.append(c)
+                elif ((c == ')' and st[-1] == '(') or
+                      (c == '}' and st[-1] == '{') or
+                      (c == ']' and st[-1] == '[')):
+                    st.pop()
+                elif c in ')}]':
+                    return 'invalid', None
+            if st[-1] == 'EOF':
+                return 'complete', None
+            else:
+                last_line = code.splitlines()[-1].replace('\t', '  ')
+                return 'incomplete', len(re.match(r'^ *', last_line)[0])
 
     def code_cell(self, cell_idx):
         cell = self.table.cellAt(cell_idx, 0)
