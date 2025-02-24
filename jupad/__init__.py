@@ -587,15 +587,15 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
     def _handle_error(self, msg):
         msg_id = msg['parent_header']['msg_id']
         content = msg['content']
-        ename = content['ename']
-        self.log.debug(f'error ({msg_id.split("_")[-1]}): {ename}')
+        ename_value = content['ename'] + ': ' + content['evalue']
+        self.log.debug(f'error ({msg_id.split("_")[-1]}): {ename_value}')
         if msg_id != self.execute_msg_id:
             return
         self.executing_animation.stop()
         with self.join_edit_block():
             self.set_cell_color(self.execute_cell_idx, self.theme['error_color'])
             self.set_cell_tooltip(self.execute_cell_idx, self.html_converter.convert(''.join(content['traceback'])))
-            self.append_text(self.execute_cell_idx, ename)
+            self.append_text(self.execute_cell_idx, ename_value)
 
     def _handle_execute_reply(self, msg):
         msg_id = msg['parent_header']['msg_id']
@@ -1090,9 +1090,9 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
 
     @pyqtSlot()
     def save_file(self):
-        self.log.debug('save_file')
         if self.file is None:
             return
+        self.log.debug('save_file')
         try:
             self.file.seek(0)
             self.file.truncate()
@@ -1132,7 +1132,8 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.parent().hide()
         self.save_file()
         self.executing_animation.stop()
-        self.kernel_manager.shutdown_kernel()
+        if self.kernel_manager:
+            self.kernel_manager.shutdown_kernel(now=True)
         if self.file:
             self.file.close()
         return super().closeEvent(event)
