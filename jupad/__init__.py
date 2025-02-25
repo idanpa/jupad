@@ -789,7 +789,15 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             return self.inspect()
         with self.edit_block():
             # if multiple cells selected, start with deleting them
-            if mrow_num > 1 and (e.key() in [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Delete] or e.text() != ''):
+            if mrow_num > 1 and e.key() == Qt.Key_X and (e.modifiers() & Qt.ControlModifier):
+                # cut is not working properly when multiple cells selected
+                self.copy()
+                self.insert_cell(mrow)
+                self.remove_cells(mrow+1, mrow_num)
+                if mrow == 0:
+                    self.execute(0) # to show splash
+                return
+            elif mrow_num > 1 and (e.key() in [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Backspace, Qt.Key_Delete] or e.text() != ''):
                 self.insert_cell(mrow)
                 cell_idx = mrow
                 self.remove_cells(mrow+1, mrow_num)
