@@ -21,6 +21,7 @@ from qtconsole.base_frontend_mixin import BaseFrontendMixin
 from qtconsole.manager import QtKernelManager
 from qtconsole.completion_widget import CompletionWidget
 from qtconsole.call_tip_widget import CallTipWidget
+from qtconsole.ansi_code_processor import QtAnsiCodeProcessor
 
 from ansi2html import Ansi2HTMLConverter
 
@@ -171,13 +172,12 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.highlighter.set_style(self.theme['pygments_style'])
 
         self.in_undo_redo = False
-        # last execution count of each cell
         self.execution_count = [None]
-        # if cell has an image
         self.has_image = [False]
-        # latex code of cell
         self.latex = ['']
         self.pending_newline = ['']
+        self.out_cell_cursor = [None]
+
         self.execute_running = False
         self.prev_execute_msg_id = ''
         self.execute_msg_id = ''
@@ -189,6 +189,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.file = None
         self.setMouseTracking(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.ansi_processor = QtAnsiCodeProcessor()
         self.html_converter = Ansi2HTMLConverter(inline=True, line_wrap=False, dark_bg=self.theme['is_dark'])
         self._control = self # for CompletionWidget
         self.completion_widget = CompletionWidget_(self, 0)
@@ -197,7 +198,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.thread_pool = QThreadPool()
         self.executing_animation = AnimateExecutingCell(self)
 
-        # for setting cells format:
+        # for setting cells format and initialize lists:
         self.insert_cell(0)
         self.remove_cells(1, 1)
 
@@ -308,6 +309,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.latex.insert(cell_idx, '')
         self.pending_newline.insert(cell_idx, '')
 
+        out_cell = self.out_cell(cell_idx)
         out_cell_format = QTextTableCellFormat()
         out_cell_format.setLeftBorder(3)
         out_cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
@@ -316,8 +318,9 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         out_cell_format.setBottomBorder(1)
         out_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
         out_cell_format.setBottomBorderBrush(self.theme['separator_color'])
-        self.out_cell(cell_idx).setFormat(out_cell_format)
+        out_cell.setFormat(out_cell_format)
 
+        code_cell = self.code_cell(cell_idx)
         code_cell_format = QTextTableCellFormat()
         code_cell_format.setLeftBorder(3)
         code_cell_format.setLeftBorderStyle(QTextTableFormat.BorderStyle_Solid)
@@ -325,9 +328,10 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         code_cell_format.setBottomBorder(1)
         code_cell_format.setBottomBorderStyle(QTextTableFormat.BorderStyle_Solid)
         code_cell_format.setBottomBorderBrush(self.theme['separator_color'])
-        self.code_cell(cell_idx).setFormat(code_cell_format)
+        code_cell.setFormat(code_cell_format)
 
-        self.setTextCursor(self.code_cell(cell_idx).firstCursorPosition())
+        self.setTextCursor(code_cell.firstCursorPosition())
+        self.out_cell_cursor.insert(cell_idx, out_cell.lastCursorPosition())
 
     def stop_execution(self):
         if self.execute_running:
@@ -342,12 +346,14 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.has_image[cell_idx:cell_idx+count] = []
         self.latex[cell_idx:cell_idx+count] = []
         self.pending_newline[cell_idx:cell_idx+count] = []
+        self.out_cell_cursor[cell_idx:cell_idx+count] = []
 
     def sync_amount_of_cells(self):
         self.execution_count = [None]*self.table.rows()
         self.has_image = [False]*self.table.rows()
         self.latex = ['']*self.table.rows()
         self.pending_newline = ['']*self.table.rows()
+        self.out_cell_cursor = [self.out_cell(i).lastCursorPosition() for i in range(self.table.rows())]
 
     def get_cell_code(self, cell_idx):
         cell = self.code_cell(cell_idx)
@@ -437,6 +443,8 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         cursor.removeSelectedText()
         self.has_image[cell_idx] = False
         self.pending_newline[cell_idx] = ''
+        self.out_cell_cursor[cell_idx] = cursor
+
         cell_format = cell.format().toTableCellFormat()
         cell_format.setToolTip('')
         cell.setFormat(cell_format)
@@ -449,8 +457,53 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             self.pending_newline[cell_idx] = txt[-1]
             txt = txt[:-1]
         cell = self.out_cell(cell_idx)
-        cursor = cell.lastCursorPosition()
-        cursor.insertText(txt)
+        cursor = self.out_cell_cursor[cell_idx]
+        for substring in self.ansi_processor.split_string(txt):
+            for act in self.ansi_processor.actions:
+                if act.action == 'erase':
+                    if act.area == 'screen':
+                        cursor.setPosition(cell.firstCursorPosition().position())
+                        cursor.setPosition(cell.lastCursorPosition().position(), QTextCursor.KeepAnchor)
+                        cursor.removeSelectedText()
+                    if act.area == 'line':
+                        if act.erase_to == 'all':
+                            cursor.select(QTextCursor.LineUnderCursor)
+                            cursor.removeSelectedText()
+                        elif act.erase_to == 'start':
+                            cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.KeepAnchor)
+                            cursor.insertText(' '*len(cursor.selectedText()))
+                        elif act.erase_to == 'end':
+                            cursor.movePosition(QTextCursor.EndOfLine, QTextCursor.KeepAnchor)
+                            cursor.removeSelectedText()
+                elif act.action == 'scroll' and act.unit == 'page':
+                    self.log.warning('unsupported scroll')
+                elif act.action == 'move' and act.unit == 'line':
+                    if act.dir == 'up':
+                        cursor.movePosition(QTextCursor.Up, n=act.count)
+                    elif act.dir == 'down':
+                        cursor.movePosition(QTextCursor.Down, n=act.count)
+                    elif act.dir == 'leftup':
+                        cursor.movePosition(QTextCursor.Up, n=act.count)
+                        cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.MoveAnchor)
+                elif act.action == 'carriage-return':
+                    cursor.movePosition(QTextCursor.StartOfLine, QTextCursor.MoveAnchor)
+                elif act.action == 'beep':
+                    QApplication.instance().beep()
+                elif act.action == 'backspace':
+                    if not cursor.atBlockStart():
+                        cursor.movePosition(QTextCursor.PreviousCharacter, QTextCursor.MoveAnchor)
+                elif act.action == 'newline':
+                    cursor.movePosition(QTextCursor.EndOfLine, QTextCursor.MoveAnchor)
+                    cursor.insertText("\n")
+
+            if substring is not None:
+                format = self.ansi_processor.get_format()
+                cursor2 = QTextCursor(cursor)
+                cursor2.movePosition(QTextCursor.EndOfLine)
+                remain_till_end_of_line = cursor2.position() - cursor.position()
+                swallow = min(len(substring), remain_till_end_of_line)
+                cursor.setPosition(cursor.position() + swallow, QTextCursor.KeepAnchor)
+                cursor.insertText(substring, format)
 
     def append_img(self, cell_idx, img, format, name):
         try:
@@ -508,6 +561,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         self.kernel_client.execute(prep_code, silent=True, stop_on_error=False)
         # don't stop on error, we interrupt kernel and execute a new cell immediately after, otherwise might get aborted
 
+        self.ansi_processor.reset_sgr()
         self.prev_execute_cell_idx = self.execute_cell_idx
         self.prev_execute_msg_id = self.execute_msg_id
         self.execute_cell_idx = cell_idx
@@ -701,7 +755,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         return
 
     def _handle_stream(self, msg):
-        msg_id = msg['parent_header'].get('msg_id', 'IGNORE_ME')
+        msg_id = msg['parent_header'].get('msg_id', 'NO_MSG_ID')
         if msg_id != self.execute_msg_id:
             return
         with self.join_edit_block():
