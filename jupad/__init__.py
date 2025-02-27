@@ -715,6 +715,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
 
     def keyPressEvent(self, e):
         # self.log.debug(f'keyPress {Qt.Key(e.key()).name} {Qt.KeyboardModifier(e.modifiers()).name} {e.text()}')
+        cursor = self.textCursor()
         # operations that always propegate:
         if e.key() in [Qt.Key_Z, Qt.Key_Y] and (e.modifiers() & Qt.ControlModifier):
             self.in_undo_redo = True
@@ -725,6 +726,10 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             self.in_undo_redo = False
             # don't restart execute, usually undo/redo handles the output as well
             return
+        elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
+            if (e.modifiers() & Qt.ShiftModifier):
+                return cursor.insertText(QApplication.clipboard().text())
+            return super().keyPressEvent(e) # paste handled by insertFromMimeData
         elif e.key() == Qt.Key_V and (e.modifiers() & Qt.ControlModifier):
             return super().keyPressEvent(e) # paste handled by insertFromMimeData
         elif e.key() == Qt.Key_R and (e.modifiers() & Qt.ControlModifier):
@@ -743,7 +748,6 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
             # escape key gives e.text()='\x1b', ignore it
             return
 
-        cursor = self.textCursor()
         if e.key() == Qt.Key_C and (e.modifiers() & Qt.ControlModifier):
             if cursor.hasSelection():
                 return super().keyPressEvent(e) # copy handled by createMimeDataFromSelection
