@@ -7,7 +7,6 @@ import os
 import sys
 import re
 import traceback
-import subprocess
 import logging
 from base64 import b64decode
 from contextlib import contextmanager
@@ -1070,11 +1069,7 @@ class JupadTextEdit(QTextEdit, BaseFrontendMixin):
         padding = 10
         columns = int((width-padding) // self.char_width)
         lines = int((self.viewport().height()-padding) // self.char_height)
-        if os.name == 'nt':
-            subprocess.Popen(f'mode {columns},{lines}', shell=True)
-        elif os.name == 'posix':
-            subprocess.Popen(['stty', 'rows' ,f'{lines}', 'cols', f'{columns}'])
-        # above is not enough, on linux shutil.get_terminal_size() looks at a wrapper of stdout and fails, on windows we are in gui mode, no terminal
+        # on linux shutil.get_terminal_size() looks at a wrapper of stdout and fails, on windows we are in gui mode, no terminal
         self.kernel_client.execute(f'import os\nos.environ["COLUMNS"] = "{columns}"\nos.environ["LINES"] = "{lines}"', silent=True, stop_on_error=False)
         # new output would use the new width
         self.execute(0)
