@@ -8,5 +8,6 @@ __pycache__/
 /.eggs
 *.egg-info/
 *.egg
+_version.py
 
 .vscode/
